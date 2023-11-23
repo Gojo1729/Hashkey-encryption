@@ -19,28 +19,28 @@ def start_server():
 
         try:
             print('connection from', client_address)
-            data= b''
+            data= []
             # Receive the data in small chunks and retransmit it
             while True:
                 chunk = connection.recv(128)
-
-                data+= chunk
+                print(chunk)
+                data.append(chunk)
 
                 if not chunk:
                     connection.close()
                     break
             
+            print(data)
             # print('received hash {!r}'.format(data))
             IV = b'4832500747'
             Key = b'4103583911'
-            Cipher= data.hex()
-            print("Cipher ", Cipher)
+            Cipher = data
             Plain = Decryption.Plain_Text(IV, Key, Cipher)
-            print(type(Plain))
             print("Plain Text: " ,Plain)
         
         finally:
             print("Done")
+            client_socket.close()
 
 if __name__ == '__main__':
     start_server()
