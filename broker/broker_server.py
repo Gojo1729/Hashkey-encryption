@@ -9,7 +9,7 @@ import json
 import httpx
 import pandas as pd
 import asyncio
-import message
+import enc_dec
 
 
 # broker_public_key = "../bro_pub.pem"
@@ -96,6 +96,15 @@ def send_message(state, encrypted_data, auth=False):
 
             else:
                 response = await client.post(state.msg_api, content=encrypted_data)
+                print(
+                    f"{response=}, {response.status_code=}, {type(response.status_code)=}, {type(response.text)=}"
+                )
+                if (response.status_code == 200) and (response.text == '"RECIEVED"'):
+                    print(f"Send message to {state.user_id}")
+                else:
+                    print(
+                        f"Error in sending message to {state.user_id}, Error -> {response.status_code}"
+                    )
 
     asyncio.create_task(send_request())
 
@@ -153,17 +162,22 @@ def BROKER_MERCHANT():
     print("Authentication response sent to Merchant.")
 
 
-def CUSTOMER_MERCHANT(Decrypted_MESS):
-    random_customer_id: str = customers_state[Decrypted_MESS["USERID"]].random_id
-    Decrypted_MESS["USERID"] = random_customer_id
-    Decrypted_MESS["ENTITY"] = "Broker"
-    Decrypted_MESS["SIGNATURE"] = ""
-    print(f"payload to merchant {Decrypted_MESS}, type {type(Decrypted_MESS)}")
-    payload = json.dumps(Decrypted_MESS)
+def customer_to_merchant(customer_decrypted_message):
+    random_customer_id: str = customers_state[
+        customer_decrypted_message["USERID"]
+    ].random_id
+    customer_decrypted_message["USERID"] = random_customer_id
+    customer_decrypted_message["ENTITY"] = "Broker"
+    customer_decrypted_message["SIGNATURE"] = ""
+    customer_decrypted_message["TIMESTAMP"] = str(datetime.now())
+    print(
+        f"payload to merchant {customer_decrypted_message}, type {type(customer_decrypted_message)}"
+    )
+    payload = json.dumps(customer_decrypted_message)
     (
         encrypted_payload_to_merchant,
         merchant_hash,
-    ) = message.encrypt_data(payload, merchant_state)
+    ) = enc_dec.encrypt_data(payload, merchant_state)
     # encrypted_data = encrypt_data(payload, merchant_public_key)
     # sign=signing(payload,self.broker_private_key)
     send_message(merchant_state, encrypted_payload_to_merchant)
@@ -227,37 +241,70 @@ async def auth_broker(data: Request):
     return return_msg
 
 
+def get_valid_customer(id, from_entity):
+    valid_customer = None
+    for customer in customers_state.values():
+        if from_entity == "MERCHANT":
+            if customer.random_id == id:
+                valid_customer = customer
+        elif from_entity == "CUSTOMER":
+            if customer.user_id == id:
+                valid_customer = customer
+
+    return valid_customer
+
+
+# def get_enc_payload_to_customer(merchant_payload, customer_payload, customer_state):
+#     merchant_enc_payload, merchant_hash = enc_dec.encrypt_data(
+#         merchant_payload, customer_state
+#     )
+#     customer_payload["PAYLOAD"] = merchant_enc_payload.decode("latin1")
+#     broker_enc_payload, broker_hash = enc_dec.encrypt_data(customer_payload, broker_state)
+
+#     return broker_enc_payload
+
+
 # receving msg from merchant
 @app.post("/message_merchant_broker")
 async def message_merchant_broker(data: Request):
     # use keyed hash
     receieved_data = await data.body()
     # print("Encrypted payload :", receieved_data)
-    merchant_msg_decrypted = message.decrypt_data(receieved_data, merchant_state)
-    print(f"Decrypted data {merchant_msg_decrypted}, {type(merchant_msg_decrypted)=}")
-    # create a new payload to merchant
-    if "CUSTOMER_AUTHENTICATION" == merchant_msg_decrypted["TYPE"]:
-        rid = merchant_msg_decrypted["RID"]
-        for customer in customers_state.values():
-            if customer.random_id == rid:
-                timestamp = str(datetime.now())
-                print("Payload received from Merchant")
-                print(f"Modified payload forwarded to customer")
-                # encrypt payload to customer
-                customer_payload = {
-                    "TYPE": "MERCHANT_AUTHENTICATION",
-                    "ENTITY": "BROKER",
-                    "PAYLOAD": {
-                        "ENTITY": "Merchant",
-                        "Customer_Message": {
-                            "MESSAGE": "Hi Customer, merchant is successfully authenticated",
-                            "TS": timestamp,
-                            "Signature": "",
-                        },
-                    },
-                }
-                enc_payload, msg_hash = message.encrypt_data(customer_payload, customer)
-                send_message(customer, enc_payload, auth=False)
+    merchant_msg_decrypted = enc_dec.decrypt_data(receieved_data, merchant_state)
+    msg_type = merchant_msg_decrypted["TYPE"]
+    cust_rid = merchant_msg_decrypted["RID"]
+    valid_customer = get_valid_customer(cust_rid, "MERCHANT")
+
+    if valid_customer is None:
+        return "INVALID_MESSAGE"
+
+    print(
+        f"Decrypted data from merchant {merchant_msg_decrypted}, {type(merchant_msg_decrypted)=}"
+    )  # create a new payload to merchant
+    timestamp = str(datetime.now())
+    if "CUSTOMER_AUTHENTICATION" == msg_type:
+        print("Payload received from Merchant")
+        print(f"Modified payload forwarded to customer")
+        # encrypt payload to customer
+        customer_payload = {
+            "TYPE": "MERCHANT_AUTHENTICATION",
+            "ENTITY": "BROKER",
+            "PAYLOAD": merchant_msg_decrypted["PAYLOAD"],
+        }
+        enc_payload, msg_hash = enc_dec.encrypt_data(customer_payload, valid_customer)
+        send_message(valid_customer, enc_payload, auth=False)
+
+    elif "TO_CUSTOMER" == msg_type:
+        # get the payload, append his message to customer and send it
+        customer_payload = {
+            "TYPE": "FROM_MERCHANT",
+            "ENTITY": "BROKER",
+            "HASH": "",
+            "TIMESTAMP": str(datetime.now()),
+            "PAYLOAD": merchant_msg_decrypted["PAYLOAD"],
+        }
+        enc_payload, _ = enc_dec.encrypt_data(customer_payload, valid_customer)
+        send_message(valid_customer, enc_payload, auth=False)
 
 
 # receiving msg from customer1
@@ -266,13 +313,25 @@ async def message_customer_1_broker(data: Request):
     # use keyed hash
     receieved_data = await data.body()
     # print("Encrypted payload :", receieved_data)
-    customer_msg_decrypted = message.decrypt_data(receieved_data, customer1_state)
+    customer_msg_decrypted = enc_dec.decrypt_data(receieved_data, customer1_state)
     print(f"Decrypted data {customer_msg_decrypted}, {type(customer_msg_decrypted)=}")
+    msg_type = customer_msg_decrypted["TYPE"]
+
+    # decrypt, verify the hash, take action
+    print("Payload received from Customer")
     # create a new payload to merchant
-    if "MERCHANT_AUTHENTICATION" == customer_msg_decrypted["TYPE"]:
-        print("Payload received from Customer")
-        CUSTOMER_MERCHANT(customer_msg_decrypted)
-        print(f"Modified payload forwarded to Merchant")
+    if "MERCHANT_AUTHENTICATION" == msg_type:
+        customer_to_merchant(customer_msg_decrypted)
+
+    elif "TO_MERCHANT" == msg_type:
+        """
+        1. check if the user exists using UID and get the custoemr state
+        2. check if he is authorized.
+        3. if already authorized forward message to merch.
+        4. else reply to customer that msg is invalid, authorize first
+        """
+        customer_msg_decrypted["TYPE"] = "FROM_CUSTOMER"
+        customer_to_merchant(customer_msg_decrypted)
 
 
 # receiving msg from customer1
@@ -281,10 +340,8 @@ async def message_customer_2_broker(data: Request):
     # use keyed hash
     receieved_data = await data.body()
     # print("Encrypted payload :", receieved_data)
-    customer_msg_decrypted = message.decrypt_data(receieved_data, customer1_state)
+    customer_msg_decrypted = enc_dec.decrypt_data(receieved_data, customer2_state)
     print(f"Decrypted data {customer_msg_decrypted}, {type(customer_msg_decrypted)=}")
     # create a new payload to merchant
     if "MERCHANT_AUTHENTICATION" == customer_msg_decrypted["TYPE"]:
-        print("Payload received from Customer")
-        CUSTOMER_MERCHANT(customer_msg_decrypted)
-        print(f"Modified payload forwarded to Merchant")
+        customer_to_merchant(customer_msg_decrypted)

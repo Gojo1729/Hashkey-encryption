@@ -13,7 +13,9 @@ def decrypt_data(encrypted_message, state):
 def get_encrypted_payload(payload, state):
     enc = Encryption()
     Key, IV = state.session_key, state.iv
-    encoded_MESS_CB = json.dumps(payload).encode()
+    encoded_MESS_CB = json.dumps(payload)
+    print(f"Length of message {len(encoded_MESS_CB)}")
+    encoded_MESS_CB = encoded_MESS_CB.encode("latin1")
     enc_data = enc.encrypt(encoded_MESS_CB, Key, IV)
     HASH_MESS_CM = enc.hash_256(encoded_MESS_CB + Key)
     return enc_data, HASH_MESS_CM

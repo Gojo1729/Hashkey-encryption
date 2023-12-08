@@ -8,8 +8,8 @@ from Auth_encryption import rsa_encrypt_data
 from datetime import datetime
 import json
 import httpx
-import message
-
+import enc_dec
+import time
 
 # broker_public_key = "../bro_pub.pem"
 # customer1_private_key = "../cus1_pri.pem"
@@ -44,8 +44,8 @@ class MerchantState:
     def __init__(self) -> None:
         self.state = None
         self.auth_done = False
-        self.merchant_iv = b"6042302273"
-        self.merchant_session_key = b"7289135233"
+        self.iv = b"6042302272"
+        self.session_key = b"7289135232"
 
 
 global_userid = "C1"
@@ -91,14 +91,48 @@ def message_broker(encrypted_data):
             print("Response Content:", response.text)
 
             if response.status_code == 200:
-                return {"message": "JSON request sent successfully"}
+                return {"message": "Sent data to broker"}
             else:
                 raise HTTPException(
                     status_code=response.status_code,
-                    detail="Failed to send JSON request",
+                    detail="Failed to send data to broker request",
                 )
 
     asyncio.create_task(send_message())
+
+
+def get_enc_payload_to_merchant(merchant_payload, broker_payload):
+    print("Encrypting merchant payload")
+    merchant_enc_payload, merchant_hash = enc_dec.get_encrypted_payload(
+        merchant_payload, merchant_state
+    )
+    broker_payload["PAYLOAD"] = merchant_enc_payload.decode("latin1")
+    # broker_payload["PAYLOAD"]["HASH"] = merchant_hash
+
+    broker_enc_payload, broker_hash = enc_dec.get_encrypted_payload(
+        broker_payload, broker_state
+    )
+
+    return broker_enc_payload
+
+
+def send_message(action):
+    action = action.upper()
+    if action == "VIEW_PRODUCTS":
+        merchant_payload = {
+            "TYPE": action,
+            "TIMESTAMP": str(datetime.now()),
+            "HASH": "",
+        }
+        broker_payload = {
+            "USERID": global_userid,
+            "HASH": "",
+            "TYPE": "TO_MERCHANT",
+            "TIMESTAMP": str(datetime.now()),
+            "PAYLOAD": "",
+        }
+        enc_payload = get_enc_payload_to_merchant(merchant_payload, broker_payload)
+        message_broker(enc_payload)
 
 
 # endregion
@@ -150,11 +184,9 @@ async def auth_payload_to_merchant():
 
     # #PAYLOAD
     Merchant_Payload = {
-        "PAYLOAD": {
-            "ENTITY": "Customer",
-            "MESSAGE": "Hi Merchant ********",
-            "TYPE": "MERCHANT_AUTHENTICATION",
-        }
+        "ENTITY": "Customer",
+        "MESSAGE": "Hi Merchant ********",
+        "TYPE": "MERCHANT_AUTHENTICATION",
     }
 
     Merchant_Payload_JSON = json.dumps(Merchant_Payload)
@@ -172,7 +204,7 @@ async def auth_payload_to_merchant():
 
     # # sign=signing(payload,self.customer1_private_key)
     # broker_payload = json.dumps(broker_payload)
-    encrypted_data, signature = message.get_encrypted_payload(
+    encrypted_data, signature = enc_dec.get_encrypted_payload(
         broker_payload, broker_state
     )
     # print("Message Sent (Encrypted Format): ", encrypted_data)
@@ -199,9 +231,11 @@ async def handle_input(action_number: int = Form(...)):
         await auth_payload_to_merchant()
 
         return {"message": "Sending request to merchant"}
+
     # view products
     elif action_number == 3:
-        pass
+        print(f"sending view prod request to merchant through broker")
+        send_message("VIEW_PRODUCTS")
 
     # buy product
     elif action_number == 4:
@@ -231,18 +265,26 @@ async def handle_customer_input(data: Request):
                 broker_state.auth_done = False
 
 
-# receiving msg from customer1
+# receiving msg from broker
 @app.post("/message_customer_1")
 async def message_customer_1(data: Request):
     # use keyed hash
     receieved_data = await data.body()
     # print("Encrypted payload :", receieved_data)
-    customer_msg_decrypted = message.decrypt_data(receieved_data, broker_state)
-    print(f"Decrypted data {customer_msg_decrypted}")
+    broker_msg_decrypted = enc_dec.decrypt_data(receieved_data, broker_state)
+    # print(f"Decrypted data {broker_msg_decrypted}")
     # create a new payload to merchant
-    if "MERCHANT_AUTHENTICATION" == customer_msg_decrypted["TYPE"]:
-        print("Payload received from broker")
+    if "MERCHANT_AUTHENTICATION" == broker_msg_decrypted["TYPE"]:
+        print(f"Payload received from broker {broker_msg_decrypted}")
         # print(f"Modified payload forwarded to Merchant")
+
+    elif "FROM_MERCHANT" == broker_msg_decrypted["TYPE"]:
+        merchant_payload = broker_msg_decrypted["PAYLOAD"].encode("latin1")
+        print(f"Merchant keys {merchant_state.iv}, {merchant_state.session_key}")
+        print(f"Payload received from merchant {merchant_payload}")
+        merchant_msg_decrypted = enc_dec.decrypt_data(merchant_payload, merchant_state)
+        print(f"Merchant data decrypted {merchant_msg_decrypted['PRODUCTS']}")
+        return "VALID"
 
 
 # endregion

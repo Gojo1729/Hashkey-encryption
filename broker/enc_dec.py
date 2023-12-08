@@ -13,7 +13,7 @@ def decrypt_data(enc_payload, customer_state):
 def encrypt_data(payload, state):
     enc = Encryption()
     Key, IV = state.session_key, state.iv
-    encoded_MESS_CB = json.dumps(payload).encode()
+    encoded_MESS_CB = json.dumps(payload).encode("latin1")
     enc_data = enc.encrypt(encoded_MESS_CB, Key, IV)
     print(f"Type of {type(enc_data)}")
     HASH_MESS_CM = enc.hash_256(encoded_MESS_CB + Key)
