@@ -152,7 +152,6 @@ def validate_credentials(user_id, passwd):
             return True
 
     # If user_id doesn't exist or passwords don't match, return False
-    print("Invalid credentials.")
     return False
 
 
@@ -163,22 +162,25 @@ def BROKER_CUSTOMER(login_creds):
     if validate_credentials(user_id, password):
         choice = input("'A' for authentication with Customer ").upper()
         if choice == "A":
-            MESSAGE = "Hi {user_id} , Login Successful"
-    timestamp = str(datetime.now())
-    auth_payload = {
-        "TYPE": "MUTUAL_AUTHENTICATION",
-        "ENTITY": "Broker",
-        "PAYLOAD": {
-            "MESSAGE": MESSAGE,
-            "FLAG": "VALIDATED",
-            "TS": timestamp,
-        },
-    }
-    payload = json.dumps(auth_payload)
-    encrypted_data = encrypt_data(payload, customer1_public_key)
-    # sign=signing(payload,self.broker_private_key)
-    print("Return MSG start")
-    auth_stakeholders("Customer1", encrypted_data)
+            MESSAGE = f"Hi {user_id} , Login Successful"
+            timestamp = str(datetime.now())
+            auth_payload = {
+                "TYPE": "MUTUAL_AUTHENTICATION",
+                "ENTITY": "Broker",
+                "PAYLOAD": {
+                    "MESSAGE": MESSAGE,
+                    "FLAG": "VALIDATED",
+                    "TS": timestamp,
+                },
+            }
+            payload = json.dumps(auth_payload)
+            encrypted_data = encrypt_data(payload, customer1_public_key)
+            # sign=signing(payload,self.broker_private_key)
+            print("Return MSG start")
+            auth_stakeholders("Customer1", encrypted_data)
+    else:
+        print("Invalid credentials")
+        return {"message": "Invalid credentials"}
 
 
 def BROKER_MERCHANT():
@@ -270,7 +272,7 @@ async def auth_broker(data: Request):
     formatted_data = json.dumps(Decrypted_MESS, indent=2)
     print(f"Received from Customer:\n {formatted_data}")
     print(f"Received data from customer {receieved_data}")
-
+    return_msg = ""
     if "MUTUAL_AUTHENTICATION" == Decrypted_MESS["TYPE"]:
         entity = Decrypted_MESS["ENTITY"]
         print(entity)
@@ -282,16 +284,17 @@ async def auth_broker(data: Request):
             login_cred = Decrypted_MESS["PAYLOAD"]["LOGINCRED"]
             print(login_cred)
             print("Authentication payload received from Customer.")
-            BROKER_CUSTOMER(login_cred)
-            print(f"Authentication response sent to Customer.")
+            return_msg = BROKER_CUSTOMER(login_cred)
 
     elif "MERCHANT_AUTHENTICATION_RESPONSE" == Decrypted_MESS:
         print("Customer--Merchant Authentication Response Received")
-        MERCHANT_CUSTOMER(Decrypted_MESS)
+        return_msg = MERCHANT_CUSTOMER(Decrypted_MESS)
         print(f"Modified payload forwarded to Customer")
 
     else:
         print("Received payload does not contain any information to forward.")
+
+    return return_msg
 
 
 # receiving msg from customer1

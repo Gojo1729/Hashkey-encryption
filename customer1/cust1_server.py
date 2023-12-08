@@ -70,14 +70,15 @@ def auth_broker(encrypted_data):
             print("Response Content:", response.text)
 
             if response.status_code == 200:
-                return {"message": "JSON request sent successfully"}
+                return {"message": "Auth request sent to broker"}
+
             else:
                 raise HTTPException(
                     status_code=response.status_code,
                     detail="Failed to send JSON request",
                 )
 
-    task = asyncio.create_task(send_request())
+    asyncio.create_task(send_request())
 
 
 def message_broker(encrypted_data):
@@ -207,7 +208,7 @@ async def handle_input(action_number: int = Form(...)):
         pass
 
 
-@app.post("/auth_customer1")
+@app.post("/auth_customer_1")
 async def handle_customer_input(data: Request):
     receieved_data = await data.body()
     print("Encrypted payload :", receieved_data)
@@ -215,15 +216,16 @@ async def handle_customer_input(data: Request):
 
     Decrypted_MESS = json.loads(Decrypted_MESS)
     formatted_data = json.dumps(Decrypted_MESS, indent=2)
-    print(f"Received from Customer:\n {formatted_data}")
-    print(f"Received data from customer {receieved_data}")
+    print(f"Received from Broker:\n {formatted_data}")
 
     if "MUTUAL_AUTHENTICATION" == Decrypted_MESS["TYPE"]:
         entity = Decrypted_MESS["ENTITY"]
-
         if entity == "Broker":
-            print("Authentication payload received from Broker.")
-            print("MUTUAL AUTHENTICATION DONE WITH MERCHANT")
+            payload = Decrypted_MESS["PAYLOAD"]
+            if payload["FLAG"] == "VALIDATED":
+                print("successfull auth")
+                # return templates.TemplateResponse("index.html", {"request": data})
+                return {"message": "Broker - Customer auth successfull"}
 
     elif "FORWARD_TO_CUSTOMER_FOR_AUTHENTICATION" in Decrypted_MESS:
         sender_info = Decrypted_MESS["FORWARD_TO_CUSTOMER_FOR_AUTHENTICATION"][
@@ -233,7 +235,6 @@ async def handle_customer_input(data: Request):
 
         if entity == "MERCHANT":
             print("Authentication payload received from Broker.")
-            print("Authentication done with Merchant")
 
     # Perform any additional processing or return a response as needed
     return {"message": "Data received successfully"}
