@@ -224,20 +224,11 @@ async def handle_customer_input(data: Request):
             payload = Decrypted_MESS["PAYLOAD"]
             if payload["FLAG"] == "VALIDATED":
                 print("successfull auth")
+                broker_state.auth_done = True
                 # return templates.TemplateResponse("index.html", {"request": data})
                 return {"message": "Broker - Customer auth successfull"}
-
-    elif "FORWARD_TO_CUSTOMER_FOR_AUTHENTICATION" in Decrypted_MESS:
-        sender_info = Decrypted_MESS["FORWARD_TO_CUSTOMER_FOR_AUTHENTICATION"][
-            "SENDER_INFO"
-        ]
-        entity = sender_info.get["MERCHANT"]
-
-        if entity == "MERCHANT":
-            print("Authentication payload received from Broker.")
-
-    # Perform any additional processing or return a response as needed
-    return {"message": "Data received successfully"}
+            else:
+                broker_state.auth_done = False
 
 
 # receiving msg from customer1

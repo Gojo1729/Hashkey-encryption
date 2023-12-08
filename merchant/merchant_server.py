@@ -233,4 +233,4 @@ async def auth_merchant(data: Request):
             Send_Msg_MC(RID)
 
     # Perform any additional processing or return a response as needed
-    return {"message": "Data received successfully"}
+    # return {"message": "Data received successfully"}
