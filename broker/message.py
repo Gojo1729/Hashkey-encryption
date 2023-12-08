@@ -10,7 +10,7 @@ def decrypt_data(enc_payload, customer_state):
     return customer_msg_decrypted
 
 
-def get_encrypted_payload_to_merchant(payload, state):
+def encrypt_data(payload, state):
     enc = Encryption()
     Key, IV = state.session_key, state.iv
     encoded_MESS_CB = json.dumps(payload).encode()

@@ -24,7 +24,7 @@ customer1_public_key = "../OLD KEYS/customer1_public_key.pem"
 customer2_public_key = "../OLD KEYS/customer2_public_key.pem"
 
 
-customer_id_mapping = {"C1": 6514161}
+customer_id_mapping = {"C1": "6514161"}
 key_list = list(customer_id_mapping.keys())
 val_list = list(customer_id_mapping.values())
 
@@ -38,8 +38,8 @@ class CustomerData(BaseModel):
 class Customer1State:
     def __init__(self) -> None:
         self.host = "http://127.0.0.1:8001"
-        self.msg_api = f"{self.host}/message_customer1"
-        self.auth_api = f"{self.host}/auth_customer1"
+        self.msg_api = f"{self.host}/message_customer_1"
+        self.auth_api = f"{self.host}/auth_customer_1"
         self.state = None
         self.auth_done = False
         # assume DH is done
@@ -50,8 +50,8 @@ class Customer1State:
 class Customer2State:
     def __init__(self) -> None:
         self.host = "http://127.0.0.1:8004"
-        self.msg_api = f"{self.host}/message_customer2"
-        self.auth_api = f"{self.host}/auth_customer2"
+        self.msg_api = f"{self.host}/message_customer_2"
+        self.auth_api = f"{self.host}/auth_customer_2"
         self.state = None
         self.auth_done = False
         # assume DH is done
@@ -201,15 +201,15 @@ def BROKER_MERCHANT():
 
 def CUSTOMER_MERCHANT(Decrypted_MESS):
     random_customer_id: str = str(customer_id_mapping[Decrypted_MESS["USERID"]])
-    # Decrypted_MESS["USERID"] = random_customer_id
-    # Decrypted_MESS["ENTITY"] = "Broker"
-    # Decrypted_MESS["SIGNATURE"] = sign
+    Decrypted_MESS["USERID"] = random_customer_id
+    Decrypted_MESS["ENTITY"] = "Broker"
+    Decrypted_MESS["SIGNATURE"] = ""
     print(f"payload to merchant {Decrypted_MESS}, type {type(Decrypted_MESS)}")
     payload = json.dumps(Decrypted_MESS)
     (
         encrypted_payload_to_merchant,
         merchant_hash,
-    ) = message.get_encrypted_payload_to_merchant(payload, merchant_state)
+    ) = message.encrypt_data(payload, merchant_state)
     # encrypted_data = encrypt_data(payload, merchant_public_key)
     # sign=signing(payload,self.broker_private_key)
     send_message_to_merchant(encrypted_payload_to_merchant)
@@ -294,8 +294,9 @@ async def auth_broker(data: Request):
         print("Received payload does not contain any information to forward.")
 
 
-@app.post("/message_broker")
-async def message_broker(data: Request):
+# receiving msg from customer1
+@app.post("/message_customer_1_broker")
+async def message_customer_1_broker(data: Request):
     # use keyed hash
     receieved_data = await data.body()
     # print("Encrypted payload :", receieved_data)
@@ -308,12 +309,69 @@ async def message_broker(data: Request):
         print(f"Modified payload forwarded to Merchant")
 
 
-# # Define an endpoint with a path parameter
-# @app.get("/items/{item_id}")
-# def read_item(item_id: int, query_param: str = None):
-#     return {"item_id": item_id, "query_param": query_param}
+# receiving msg from customer2
+@app.post("/message_customer_2_broker")
+async def message_customer_2_broker(data: Request):
+    # use keyed hash
+    receieved_data = await data.body()
+    # print("Encrypted payload :", receieved_data)
+    customer_msg_decrypted = message.decrypt_data(receieved_data, customer2_state)
+    print(f"Decrypted data {customer_msg_decrypted}, {type(customer_msg_decrypted)=}")
+    # create a new payload to merchant
+    if "CUSTOMER_AUTHENTICATION" == customer_msg_decrypted["TYPE"]:
+        print("Payload received from Customer")
+        # CUSTOMER_MERCHANT(customer_msg_decrypted)
+        print(f"Modified payload forwarded to Merchant")
 
 
-# Run the server with uvicorn
-# Use the command: uvicorn filename:app --reload
-# For example, if your file is named "main.py", use: uvicorn main:app --reload
+def message_customer_1(encrypted_data, state):
+    async def send_message():
+        async with httpx.AsyncClient() as client:
+            response = await client.post(state.msg_api, content=encrypted_data)
+
+            print("Response Status Code:", response.status_code)
+            print("Response Content:", response.text)
+
+            if response.status_code == 200:
+                return {"message": "JSON request sent successfully"}
+            else:
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail="Failed to send JSON request",
+                )
+
+    asyncio.create_task(send_message())
+
+
+# receving msg from merchant
+@app.post("/message_merchant_broker")
+async def message_merchant_broker(data: Request):
+    # use keyed hash
+    receieved_data = await data.body()
+    # print("Encrypted payload :", receieved_data)
+    merchant_msg_decrypted = message.decrypt_data(receieved_data, merchant_state)
+    print(f"Decrypted data {merchant_msg_decrypted}, {type(merchant_msg_decrypted)=}")
+    # create a new payload to merchant
+    if "CUSTOMER_AUTHENTICATION" == merchant_msg_decrypted["TYPE"]:
+        rid = merchant_msg_decrypted["RID"]
+        if key_list[val_list.index(rid)] == "C1":
+            timestamp = str(datetime.now())
+            print("Payload received from Merchant")
+            print(f"Modified payload forwarded to customer")
+            # encrypt payload to customer
+            customer_payload = {
+                "TYPE": "MERCHANT_AUTHENTICATION",
+                "ENTITY": "BROKER",
+                "PAYLOAD": {
+                    "ENTITY": "Merchant",
+                    "Customer_Message": {
+                        "MESSAGE": "Hi Customer, from merchant",
+                        "TS": timestamp,
+                        "Signature": "",
+                    },
+                },
+            }
+            enc_payload, msg_hash = message.encrypt_data(
+                customer_payload, customer1_state
+            )
+            message_customer_1(enc_payload, customer1_state)

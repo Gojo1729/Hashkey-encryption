@@ -29,6 +29,9 @@ class BrokerState:
     def __init__(self) -> None:
         self.state = None
         self.auth_done = False
+        self.host = f"http://127.0.0.1:8002"
+        self.auth_api = f"{self.host}/auth_broker"
+        self.msg_api = f"{self.host}/message_merchant_broker"
         # assume DH is done
         self.iv = b"6042302273"
         self.session_key = b"7289135233"
@@ -49,9 +52,7 @@ async def read_root(request: Request):
 def auth_broker(encrypted_data):
     async def send_request():
         async with httpx.AsyncClient() as client:
-            response = await client.post(
-                f"http://127.0.0.1:8002/auth_broker", content=encrypted_data
-            )
+            response = await client.post(broker_state.auth_api, content=encrypted_data)
 
             print("Response Status Code:", response.status_code)
             print("Response Content:", response.text)
@@ -67,12 +68,10 @@ def auth_broker(encrypted_data):
     asyncio.create_task(send_request())
 
 
-def send_msg_to_broker(encrypted_data):
+def message_broker(encrypted_data):
     async def send_request():
         async with httpx.AsyncClient() as client:
-            response = await client.post(
-                f"http://127.0.0.1:8002/message_broker", content=encrypted_data
-            )
+            response = await client.post(broker_state.msg_api, content=encrypted_data)
 
             print("Response Status Code:", response.status_code)
             print("Response Content:", response.text)
@@ -110,7 +109,7 @@ def Send_Msg_MB():
         # sign=signing(payload,self.merchant_private_key)
         payload = json.dumps(payload)
         encrypted_data = encrypt_data(payload, broker_public_key)
-        send_msg_to_broker(encrypted_data)
+        auth_broker(encrypted_data)
         print("Message Sent (Encrypted Format): ", encrypted_data)
 
 
@@ -160,14 +159,39 @@ async def handle_input(action_number: int = Form(...)):
         pass
 
 
+def handle_message(msg, rid):
+    payload = msg["PAYLOAD"]
+    if payload["TYPE"] == "MERCHANT_AUTHENTICATION":
+        if payload["ENTITY"] == "Customer":
+            timestamp = str(datetime.now())
+            # message customer through broker
+            broker_payload = {
+                "TYPE": "CUSTOMER_AUTHENTICATION",
+                "ENTITY": "Merchant",
+                "RID": f"{rid}",
+                "PAYLOAD": {
+                    "ENTITY": "Merchant",
+                    "MESSAGE": {
+                        "MESSAGE": "Hi Customer, from merchant",
+                        "TS": timestamp,
+                        "Signature": "",
+                    },
+                },
+            }
+            encrypt_broker_payload, msg_hash = message.get_encrypted_payload(
+                broker_payload, broker_state
+            )
+            message_broker(encrypt_broker_payload)
+
+
 def CUSTOMER_MERCHANT(payload):
     enc_payload = payload["PAYLOAD"].encode("latin")
     print(f"{type(enc_payload)=}")
     # decrypt using rsa
     decypted_customer_msg = decrypt_data(enc_payload, merchant_private_key)
     decrypted_customer_msg_json = json.loads(decypted_customer_msg)
-    formatted_data = json.dumps(decrypted_customer_msg_json, indent=2)
-    print(f"Customer data decrypted {formatted_data}")
+    print(f"Customer data decrypted {decrypted_customer_msg_json}")
+    handle_message(decrypted_customer_msg_json, payload["USERID"])
 
 
 @app.post("/message_merchant")

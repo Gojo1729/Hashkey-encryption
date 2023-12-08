@@ -36,6 +36,8 @@ class Decryption:
 
         unpaded_dmsg = unpad(concatenated_decrypted_message, 32)
         decrypted_message = unpaded_dmsg.decode()
-        decrypted_json = json.loads(json.loads(decrypted_message))
+        decrypted_json = json.loads(decrypted_message)
+        if type(decrypted_json) == str:
+            decrypted_json = json.loads(decrypted_json)
 
         return decrypted_json

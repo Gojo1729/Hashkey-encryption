@@ -23,7 +23,7 @@ customer1_private_key = "../OLD KEYS/customer1_private_key.pem"
 
 BROKER_API = f"http://127.0.0.1:8002"
 BROKER_AUTH_API = f"{BROKER_API}/auth_broker"
-BROKER_MSG_API = f"{BROKER_API}/message_broker"
+BROKER_MSG_API = f"{BROKER_API}/message_customer_1_broker"
 
 
 class CustomerInput(BaseModel):
@@ -36,8 +36,8 @@ class BrokerState:
         self.state = None
         self.auth_done = False
         # assume DH is done
-        self.broker_iv = b"4832500747"
-        self.broker_session_key = b"4103583911"
+        self.iv = b"4832500747"
+        self.session_key = b"4103583911"
 
 
 class MerchantState:
@@ -80,7 +80,7 @@ def auth_broker(encrypted_data):
     task = asyncio.create_task(send_request())
 
 
-def send_message_to_broker(encrypted_data):
+def message_broker(encrypted_data):
     # use keyed hash for sending messages after encryption
     async def send_message():
         async with httpx.AsyncClient() as client:
@@ -151,7 +151,8 @@ async def auth_payload_to_merchant():
     Merchant_Payload = {
         "PAYLOAD": {
             "ENTITY": "Customer",
-            "MESSAGE": "Hi Merchant !!!",
+            "MESSAGE": "Hi Merchant ********",
+            "TYPE": "MERCHANT_AUTHENTICATION",
         }
     }
 
@@ -170,12 +171,12 @@ async def auth_payload_to_merchant():
 
     # # sign=signing(payload,self.customer1_private_key)
     # broker_payload = json.dumps(broker_payload)
-    encrypted_data, signature = message.get_encrypted_payload_to_broker(
+    encrypted_data, signature = message.get_encrypted_payload(
         broker_payload, broker_state
     )
     # print("Message Sent (Encrypted Format): ", encrypted_data)
     print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
-    send_message_to_broker(encrypted_data)
+    message_broker(encrypted_data)
 
 
 # endregion
@@ -236,6 +237,20 @@ async def handle_customer_input(data: Request):
 
     # Perform any additional processing or return a response as needed
     return {"message": "Data received successfully"}
+
+
+# receiving msg from customer1
+@app.post("/message_customer_1")
+async def message_customer_1(data: Request):
+    # use keyed hash
+    receieved_data = await data.body()
+    # print("Encrypted payload :", receieved_data)
+    customer_msg_decrypted = message.decrypt_data(receieved_data, broker_state)
+    print(f"Decrypted data {customer_msg_decrypted}")
+    # create a new payload to merchant
+    if "MERCHANT_AUTHENTICATION" == customer_msg_decrypted["TYPE"]:
+        print("Payload received from broker")
+        # print(f"Modified payload forwarded to Merchant")
 
 
 # endregion
