@@ -59,6 +59,7 @@ class Customer2State:
 
 class MerchantState:
     def __init__(self) -> None:
+        self.user_id = "M1"
         self.host = "http://127.0.0.1:8003"
         self.msg_api = f"{self.host}/message_merchant"
         self.auth_api = f"{self.host}/auth_merchant"
@@ -78,28 +79,23 @@ customers_state = {"C1": customer1_state, "C2": customer2_state}
 merchant_state = MerchantState()
 
 
-# region send message
-def handle_response(response):
-    print("Response Status Code:", response.status_code)
-    print("Response Content:", response.text)
-
-    if response.status_code == 200:
-        print("Auth response sent successfully")
-    else:
-        raise HTTPException(
-            status_code=response.status_code, detail="Failed to send JSON request"
-        )
-
-
+# region message
 def send_message(state, encrypted_data, auth=False):
     async def send_request():
         async with httpx.AsyncClient() as client:
             if auth:
                 response = await client.post(state.auth_api, content=encrypted_data)
-                handle_response(response)
+                print(
+                    f"{response=}, {response.status_code=}, {type(response.status_code)=}, {type(response.text)=}"
+                )
+                if (response.status_code == 200) and (response.text == '"VALIDATED"'):
+                    print(f"Mutual authentication with {state.user_id} successfull")
+                    state.auth = True
+                else:
+                    state.auth = False
+
             else:
                 response = await client.post(state.msg_api, content=encrypted_data)
-                handle_response(response)
 
     asyncio.create_task(send_request())
 
@@ -122,23 +118,21 @@ def BROKER_CUSTOMER(login_creds):
         print("Invalid credentials")
         return {"message": MESSAGE}
 
-    choice = input("Press A to send authentication request with customer").upper()
-    if choice == "A":
-        MESSAGE = f"Hi {user_id} , Login Successful"
-        timestamp = str(datetime.now())
-        auth_payload = {
-            "TYPE": "MUTUAL_AUTHENTICATION",
-            "ENTITY": "Broker",
-            "PAYLOAD": {
-                "MESSAGE": MESSAGE,
-                "FLAG": "VALIDATED",
-                "TS": timestamp,
-            },
-        }
-        payload = json.dumps(auth_payload)
-        encrypted_data = encrypt_data(payload, valid_user.public_key)
-        # sign=signing(payload,self.broker_private_key)
-        send_message(valid_user, encrypted_data, auth=True)
+    MESSAGE = f"Hi {user_id} , Login Successful"
+    timestamp = str(datetime.now())
+    auth_payload = {
+        "TYPE": "MUTUAL_AUTHENTICATION",
+        "ENTITY": "Broker",
+        "PAYLOAD": {
+            "MESSAGE": MESSAGE,
+            "FLAG": "VALIDATED",
+            "TS": timestamp,
+        },
+    }
+    payload = json.dumps(auth_payload)
+    encrypted_data = encrypt_data(payload, valid_user.public_key)
+    # sign=signing(payload,self.broker_private_key)
+    send_message(valid_user, encrypted_data, auth=True)
 
 
 def BROKER_MERCHANT():

@@ -223,10 +223,10 @@ async def handle_customer_input(data: Request):
         if entity == "Broker":
             payload = Decrypted_MESS["PAYLOAD"]
             if payload["FLAG"] == "VALIDATED":
-                print("successfull auth")
+                print("Mutual authentication with broker successfull")
                 broker_state.auth_done = True
                 # return templates.TemplateResponse("index.html", {"request": data})
-                return {"message": "Broker - Customer auth successfull"}
+                return "VALIDATED"
             else:
                 broker_state.auth_done = False
 
