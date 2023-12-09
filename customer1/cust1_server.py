@@ -3,7 +3,7 @@ from fastapi import Depends, FastAPI, Request, Form, HTTPException
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
-from Auth_decryption import decrypt_data
+from Auth_decryption import rsa_decrypt_data
 from Auth_encryption import rsa_encrypt_data
 from datetime import datetime
 import json
@@ -24,7 +24,8 @@ customer1_private_key = "../OLD KEYS/customer1_private_key.pem"
 BROKER_API = f"http://127.0.0.1:8002"
 BROKER_AUTH_API = f"{BROKER_API}/auth_broker"
 BROKER_MSG_API = f"{BROKER_API}/message_customer_1_broker"
-REQUEST_ID = "112120120120"
+
+# as we don't have access to the DH keys before authentication, we will use this key for generating hash
 
 
 class CustomerInput(BaseModel):
@@ -67,7 +68,8 @@ def auth_broker(encrypted_data):
     # use rsa keys for auth
     async def send_request():
         async with httpx.AsyncClient() as client:
-            response = await client.post(BROKER_AUTH_API, content=encrypted_data)
+            # response = await client.post(BROKER_AUTH_API, content=encrypted_data)
+            response = await client.post(BROKER_AUTH_API, json=encrypted_data)
 
             print("Response Status Code:", response.status_code)
             print("Response Content:", response.text)
@@ -106,15 +108,11 @@ def message_broker(encrypted_data):
 
 def get_enc_payload_to_merchant(merchant_payload, broker_payload):
     print("Encrypting merchant payload")
-    merchant_enc_payload, merchant_hash = enc_dec.get_encrypted_payload(
-        merchant_payload, merchant_state
-    )
+    merchant_enc_payload = enc_dec.encrypt_payload(merchant_payload, merchant_state)
     broker_payload["PAYLOAD"] = merchant_enc_payload.decode("latin1")
     # broker_payload["PAYLOAD"]["HASH"] = merchant_hash
 
-    broker_enc_payload, broker_hash = enc_dec.get_encrypted_payload(
-        broker_payload, broker_state
-    )
+    broker_enc_payload = enc_dec.encrypt_payload(broker_payload, broker_state)
 
     return broker_enc_payload
 
@@ -167,12 +165,16 @@ def auth_payload_for_broker():
         },
     }
 
-    # sign=signing(payload,self.customer1_private_key)
+    payload_hash = enc_dec.enc.hash_256(json.dumps(payload).encode("latin1"))
     payload = json.dumps(payload)
     encrypted_data = rsa_encrypt_data(payload, broker_public_key)
     print("Message Sent (Encrypted Format): ", encrypted_data)
     print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
-    auth_broker(encrypted_data)
+    message_wrapper = {
+        "MSG": encrypted_data.decode("latin1"),
+        "HASH": payload_hash.decode("latin1"),
+    }
+    auth_broker(message_wrapper)
 
 
 async def auth_payload_to_merchant():
@@ -189,8 +191,11 @@ async def auth_payload_to_merchant():
         "ENTITY": "Customer",
         "TYPE": "MERCHANT_AUTHENTICATION",
         "REQUEST_ID": merchant_state.request_id,
+        "HASH": "",
     }
 
+    merchant_payload_hash = enc_dec.enc.hash_256(json.dumps(Merchant_Payload))
+    Merchant_Payload["HASH"] = merchant_payload_hash.decode()
     Merchant_Payload_JSON = json.dumps(Merchant_Payload)
     Merchant_Encrypted_Payload: bytes = rsa_encrypt_data(
         Merchant_Payload_JSON, merchant_public_key
@@ -202,14 +207,12 @@ async def auth_payload_to_merchant():
         "USERID": global_userid,
         "PAYLOAD": Merchant_Encrypted_Payload.decode("latin1"),
         "TIMESTAMP": timestamp,
+        "HASH": "",
     }
 
-    # # sign=signing(payload,self.customer1_private_key)
-    # broker_payload = json.dumps(broker_payload)
-    encrypted_data, signature = enc_dec.get_encrypted_payload(
-        broker_payload, broker_state
-    )
-    # print("Message Sent (Encrypted Format): ", encrypted_data)
+    broker_hash = enc_dec.enc.hash_256(json.dumps(broker_payload))
+    Merchant_Payload["HASH"] = broker_hash.decode()
+    encrypted_data = enc_dec.encrypt_payload(broker_payload, broker_state)
     print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
     message_broker(encrypted_data)
 
@@ -246,10 +249,16 @@ async def handle_input(action_number: int = Form(...)):
 
 
 @app.post("/auth_customer_1")
-async def handle_customer_input(data: Request):
-    receieved_data = await data.body()
+async def auth_customer_1(data: Request):
+    receieved_data = await data.json()
+    encrypted_message = receieved_data["MSG"].encode("latin1")
+    message_hash = receieved_data["HASH"].encode("latin1")
+
     print("Encrypted payload :", receieved_data)
-    Decrypted_MESS = decrypt_data(receieved_data, customer1_private_key)
+
+    Decrypted_MESS = rsa_decrypt_data(encrypted_message, customer1_private_key)
+    is_hash_validated = enc_dec.validate_rsa_hash(Decrypted_MESS, message_hash)
+    print(f"hash validated for broker ? {is_hash_validated}")
 
     Decrypted_MESS = json.loads(Decrypted_MESS)
     formatted_data = json.dumps(Decrypted_MESS, indent=2)
@@ -275,6 +284,8 @@ async def message_customer_1(data: Request):
     receieved_data = await data.body()
     # print("Encrypted payload :", receieved_data)
     broker_msg_decrypted = enc_dec.decrypt_data(receieved_data, broker_state)
+    hash_validated = enc_dec.validate_hash(broker_msg_decrypted, broker_state, "kh")
+    print(f"hash validated ? {hash_validated}")
     # print(f"Decrypted data {broker_msg_decrypted}")
     # create a new payload to merchant
     if "MERCHANT_AUTHENTICATION" == broker_msg_decrypted["TYPE"]:
@@ -294,6 +305,9 @@ async def message_customer_1(data: Request):
         print(f"Merchant keys {merchant_state.iv}, {merchant_state.session_key}")
         print(f"Payload received from merchant {merchant_payload}")
         merchant_msg_decrypted = enc_dec.decrypt_data(merchant_payload, merchant_state)
+        hash_validated = enc_dec.validate_hash(
+            merchant_msg_decrypted, merchant_state, "kh"
+        )
         print(f"Merchant data decrypted {merchant_msg_decrypted['PRODUCTS']}")
         return "VALID"
 

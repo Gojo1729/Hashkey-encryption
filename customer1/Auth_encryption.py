@@ -13,7 +13,7 @@ def rsa_encrypt_data(data, public_key_path):
     cipher = PKCS1_OAEP.new(public_key)
 
     # Encrypt the data
-    encrypted_data = cipher.encrypt(data.encode("utf-8"))
+    encrypted_data = cipher.encrypt(data.encode("latin1"))
 
     return encrypted_data
 

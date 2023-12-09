@@ -1,6 +1,6 @@
 from Crypto.Hash import SHA256
 import math
-from Crypto.Hash import SHA256
+from Crypto.Hash import SHA256, SHA1
 from Crypto.Random import get_random_bytes
 from Crypto.Util import strxor
 from Crypto.Util.Padding import pad, unpad

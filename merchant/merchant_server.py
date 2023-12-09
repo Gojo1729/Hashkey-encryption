@@ -147,15 +147,14 @@ async def handle_input(action_number: int = Form(...)):
 
 
 def get_enc_payload_to_customer(customer_payload, broker_payload, customer_state):
-    customer_enc_payload, customer_hash = enc_dec.get_encrypted_payload(
-        customer_payload, customer_state
+    customer_enc_payload = enc_dec.encrypt_payload(
+        customer_payload,
+        customer_state,
     )
     c_e = customer_enc_payload.decode("latin1")
     print(f"Customer enc payload {customer_enc_payload}")
     broker_payload["PAYLOAD"] = c_e
-    broker_enc_payload, broker_hash = enc_dec.get_encrypted_payload(
-        broker_payload, broker_state
-    )
+    broker_enc_payload = enc_dec.encrypt_payload(broker_payload, broker_state)
 
     return broker_enc_payload
 
@@ -175,7 +174,7 @@ def handle_message(payload, rid):
                     "RESPONSE_ID": payload.get("REQUEST_ID"),
                 },
             }
-            encrypt_broker_payload, msg_hash = enc_dec.get_encrypted_payload(
+            encrypt_broker_payload = enc_dec.encrypt_payload(
                 broker_payload, broker_state
             )
             if not False:
