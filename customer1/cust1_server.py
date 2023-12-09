@@ -24,6 +24,7 @@ customer1_private_key = "../OLD KEYS/customer1_private_key.pem"
 BROKER_API = f"http://127.0.0.1:8002"
 BROKER_AUTH_API = f"{BROKER_API}/auth_broker"
 BROKER_MSG_API = f"{BROKER_API}/message_customer_1_broker"
+REQUEST_ID = "112120120120"
 
 
 class CustomerInput(BaseModel):
@@ -38,6 +39,7 @@ class BrokerState:
         # assume DH is done
         self.iv = b"4832500747"
         self.session_key = b"4103583911"
+        self.request_id = "10129120"
 
 
 class MerchantState:
@@ -46,6 +48,7 @@ class MerchantState:
         self.auth_done = False
         self.iv = b"6042302272"
         self.session_key = b"7289135232"
+        self.request_id = "129129"
 
 
 global_userid = "C1"
@@ -154,14 +157,13 @@ def auth_payload_for_broker():
     payload = {
         "TYPE": "MUTUAL_AUTHENTICATION",
         "ENTITY": "Customer",
+        "TIMESTAMP": timestamp,
         "PAYLOAD": {
-            "MESSAGE": "Hi Broker",
             "LOGINCRED": {
-                "UID": "Customer_1",
+                "REQUEST_ID": broker_state.request_id,
                 "USER_ID": global_userid,
                 "PASSWORD": global_password,
             },
-            "TS": timestamp,
         },
     }
 
@@ -185,8 +187,8 @@ async def auth_payload_to_merchant():
     # #PAYLOAD
     Merchant_Payload = {
         "ENTITY": "Customer",
-        "MESSAGE": "Hi Merchant ********",
         "TYPE": "MERCHANT_AUTHENTICATION",
+        "REQUEST_ID": merchant_state.request_id,
     }
 
     Merchant_Payload_JSON = json.dumps(Merchant_Payload)
@@ -199,7 +201,7 @@ async def auth_payload_to_merchant():
         "ENTITY": "Customer",
         "USERID": global_userid,
         "PAYLOAD": Merchant_Encrypted_Payload.decode("latin1"),
-        "TS": timestamp,
+        "TIMESTAMP": timestamp,
     }
 
     # # sign=signing(payload,self.customer1_private_key)
@@ -225,17 +227,18 @@ async def handle_input(action_number: int = Form(...)):
         timestamp = str(datetime.now())
         # PAYLOAD
         auth_payload_for_broker()
+        return {"message": "AUTH_REQUEST_BROKER"}
 
     # send auth request to merchant through broker
     elif action_number == 2:
         await auth_payload_to_merchant()
-
-        return {"message": "Sending request to merchant"}
+        return {"message": "AUTH_REQUEST_BROKER"}
 
     # view products
     elif action_number == 3:
         print(f"sending view prod request to merchant through broker")
         send_message("VIEW_PRODUCTS")
+        return {"message": "MESSAGE_MERCHANT"}
 
     # buy product
     elif action_number == 4:
@@ -255,12 +258,12 @@ async def handle_customer_input(data: Request):
     if "MUTUAL_AUTHENTICATION" == Decrypted_MESS["TYPE"]:
         entity = Decrypted_MESS["ENTITY"]
         if entity == "Broker":
-            payload = Decrypted_MESS["PAYLOAD"]
-            if payload["FLAG"] == "VALIDATED":
+            if Decrypted_MESS.get("RESPONSE_ID") == broker_state.request_id:
                 print("Mutual authentication with broker successfull")
                 broker_state.auth_done = True
+                print(f"broker request id {Decrypted_MESS.get('REQUEST_ID')}")
                 # return templates.TemplateResponse("index.html", {"request": data})
-                return "VALIDATED"
+                return Decrypted_MESS.get("REQUEST_ID")
             else:
                 broker_state.auth_done = False
 
@@ -276,6 +279,14 @@ async def message_customer_1(data: Request):
     # create a new payload to merchant
     if "MERCHANT_AUTHENTICATION" == broker_msg_decrypted["TYPE"]:
         print(f"Payload received from broker {broker_msg_decrypted}")
+        if broker_msg_decrypted["PAYLOAD"]["RESPONSE_ID"] == merchant_state.request_id:
+            merchant_state.auth_done = True
+            print(f"MERCHANT AUTHENTICATED")
+
+        else:
+            merchant_state.auth_done = False
+            print(f"MERCHANT NOT AUTHENTICATED")
+
         # print(f"Modified payload forwarded to Merchant")
 
     elif "FROM_MERCHANT" == broker_msg_decrypted["TYPE"]:

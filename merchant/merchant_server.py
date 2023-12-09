@@ -35,6 +35,7 @@ class BrokerState:
         # assume DH is done
         self.iv = b"6042302273"
         self.session_key = b"7289135233"
+        self.request_id = "129311"
 
 
 class CustomerState:
@@ -70,8 +71,13 @@ def auth_broker(encrypted_data):
             print("Response Content:", response.text)
 
             if response.status_code == 200:
-                return {"message": "JSON request sent successfully"}
+                if response.json() == broker_state.request_id:
+                    broker_state.auth_done = True
+                    print(f"Mutual authentication with broker successfull")
+                else:
+                    broker_state.auth_done = False
             else:
+                broker_state.auth_done = False
                 raise HTTPException(
                     status_code=response.status_code,
                     detail="Failed to send JSON request",
@@ -99,7 +105,7 @@ def message_broker(encrypted_data):
     asyncio.create_task(send_request())
 
 
-def Send_Msg_MB():
+def Send_Msg_MB(broker_dec_msg):
     choice = input("'A' for authentication with broker ").upper()
 
     if choice == "A":
@@ -108,17 +114,13 @@ def Send_Msg_MB():
         payload = {
             "TYPE": "MUTUAL_AUTHENTICATION",
             "ENTITY": "Merchant",
+            "TIMESTAMP": timestamp,
             "PAYLOAD": {
-                "MESSAGE": "Hi Broker",
-                "FLAG": "VALIDATED",
-                "TS": timestamp,
+                "REQUEST_ID": broker_state.request_id,
+                "RESPONSE_ID": broker_dec_msg.get("PAYLOAD").get("REQUEST_ID"),
             },
         }
 
-        # Convert payload to JSON format
-        # json_auth_payload = json.dumps(auth_payload)
-
-        # sign=signing(payload,self.merchant_private_key)
         payload = json.dumps(payload)
         encrypted_data = encrypt_data(payload, broker_public_key)
         auth_broker(encrypted_data)
@@ -170,11 +172,7 @@ def handle_message(payload, rid):
                 "RID": f"{rid}",
                 "PAYLOAD": {
                     "ENTITY": "Merchant",
-                    "MESSAGE": {
-                        "MESSAGE": "Hi Customer, from merchant",
-                        "TS": timestamp,
-                        "Signature": "",
-                    },
+                    "RESPONSE_ID": payload.get("REQUEST_ID"),
                 },
             }
             encrypt_broker_payload, msg_hash = enc_dec.get_encrypted_payload(
@@ -192,7 +190,10 @@ def handle_message(payload, rid):
     elif msg_type == "VIEW_PRODUCTS":
         customer_payload = {
             "TIMESTAMP": str(datetime.now()),
-            "PRODUCTS": {"PID": 1, "NAME": "WATCH"},
+            "PRODUCTS": {
+                "PROD1": {"PID": 1, "NAME": "WATCH"},
+                "PROD2": {"PID": 1, "NAME": "WATCH"},
+            },
             "HASH": "",
         }
         broker_payload = {
@@ -212,6 +213,9 @@ def handle_message(payload, rid):
         message_broker(enc_payload)
         return "VALID"
 
+    elif msg_type == "BUY_PRODUCTS":
+        pass
+
 
 def take_action_for_customer(payload, rid, enc_type):
     enc_payload = payload["PAYLOAD"].encode("latin1")
@@ -222,6 +226,7 @@ def take_action_for_customer(payload, rid, enc_type):
         decrypted_customer_msg_json = json.loads(decypted_customer_msg)
         print(f"Customer data decrypted {decrypted_customer_msg_json}, {rid=}")
         return handle_message(decrypted_customer_msg_json, rid)
+
     elif enc_type == "keyedhash":
         customer = customers[rid]
         decrypted_customer_msg_json = enc_dec.decrypt_data(enc_payload, customer)
@@ -266,7 +271,7 @@ async def auth_merchant(data: Request):
         print(entity)
         if entity == "Broker":
             print("Authentication payload received from Broker.")
-            Send_Msg_MB()
+            Send_Msg_MB(Decrypted_MESS)
 
     # Perform any additional processing or return a response as needed
     # return {"message": "Data received successfully"}

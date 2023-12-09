@@ -39,6 +39,7 @@ class Customer1State:
         self.iv = b"4832500747"
         self.session_key = b"4103583911"
         self.public_key = "../OLD KEYS/customer1_public_key.pem"
+        self.request_id = "10129120"
 
 
 class Customer2State:
@@ -55,6 +56,7 @@ class Customer2State:
         self.iv = b"4832500747"
         self.session_key = b"4103583911"
         self.public_key = "../OLD KEYS/customer2_public_key.pem"
+        self.request_id = "10129121"
 
 
 class MerchantState:
@@ -68,6 +70,7 @@ class MerchantState:
         self.iv = b"6042302273"
         self.session_key = b"7289135233"
         self.public_key = "../OLD KEYS/merchant_public_key.pem"
+        self.request_id = "10129122"
 
 
 # Create an instance of the FastAPI class
@@ -88,23 +91,25 @@ def send_message(state, encrypted_data, auth=False):
                 print(
                     f"{response=}, {response.status_code=}, {type(response.status_code)=}, {type(response.text)=}"
                 )
-                if (response.status_code == 200) and (response.text == '"VALIDATED"'):
-                    print(f"Mutual authentication with {state.user_id} successfull")
-                    state.auth = True
+                if response.status_code == 200:
+                    print(f"{response.json()}")
+                    if response.json() == state.request_id:
+                        print(f"Mutual authentication with {state.user_id} successfull")
+                        state.auth = True
+                    else:
+                        print(
+                            f"Mutual authentication with {state.user_id} {response.text} un-successfull"
+                        )
+                        state.auth = False
                 else:
                     state.auth = False
-
+                return "BROKER: MESSAGE SENT"
             else:
                 response = await client.post(state.msg_api, content=encrypted_data)
                 print(
                     f"{response=}, {response.status_code=}, {type(response.status_code)=}, {type(response.text)=}"
                 )
-                if (response.status_code == 200) and (response.text == '"RECIEVED"'):
-                    print(f"Send message to {state.user_id}")
-                else:
-                    print(
-                        f"Error in sending message to {state.user_id}, Error -> {response.status_code}"
-                    )
+                return "BROKER: ERROR IN SENDING MESSAGE"
 
     asyncio.create_task(send_request())
 
@@ -132,11 +137,9 @@ def BROKER_CUSTOMER(login_creds):
     auth_payload = {
         "TYPE": "MUTUAL_AUTHENTICATION",
         "ENTITY": "Broker",
-        "PAYLOAD": {
-            "MESSAGE": MESSAGE,
-            "FLAG": "VALIDATED",
-            "TS": timestamp,
-        },
+        "REQUEST_ID": valid_user.request_id,
+        "RESPONSE_ID": login_creds.get("REQUEST_ID"),
+        "TIMESTAMP": timestamp,
     }
     payload = json.dumps(auth_payload)
     encrypted_data = encrypt_data(payload, valid_user.public_key)
@@ -151,7 +154,8 @@ def BROKER_MERCHANT():
     auth_payload = {
         "TYPE": "MUTUAL_AUTHENTICATION",
         "ENTITY": "Broker",
-        "PAYLOAD": {"MESSAGE": "HI MERCHANT", "FLAG": "VALIDATE", "TS": timestamp},
+        "TIMESTAMP": timestamp,
+        "PAYLOAD": {"REQUEST_ID": merchant_state.request_id},
     }
 
     # Convert payload to JSON format
@@ -222,23 +226,14 @@ async def auth_broker(data: Request):
         print(entity)
         if entity == "Merchant":
             print("Authentication payload received from Merchant.")
-            if Decrypted_MESS["PAYLOAD"]["FLAG"] == "VALIDATED":
+            if Decrypted_MESS["PAYLOAD"]["RESPONSE_ID"] == merchant_state.request_id:
                 print("MUTUAL AUTHENTICATION DONE WITH MERCHANT")
                 merchant_state.auth_done = True
-                return_msg = {
-                    "message": "Hi Merchant, you and broker are mutually authenticated"
-                }
-
-        elif entity == "Customer":
-            login_cred = Decrypted_MESS["PAYLOAD"]["LOGINCRED"]
-            print(login_cred)
-            print("Authentication payload received from Customer.")
-            return_msg = BROKER_CUSTOMER(login_cred)
-
+                return_msg = Decrypted_MESS["PAYLOAD"]["REQUEST_ID"]
+                return return_msg
     else:
         print("Received payload does not contain any information to forward.")
-
-    return return_msg
+        return ""
 
 
 def get_valid_customer(id, from_entity):
@@ -305,6 +300,7 @@ async def message_merchant_broker(data: Request):
         }
         enc_payload, _ = enc_dec.encrypt_data(customer_payload, valid_customer)
         send_message(valid_customer, enc_payload, auth=False)
+    return "MESSAGE SENT TO CUSTOMER"
 
 
 # receiving msg from customer1
