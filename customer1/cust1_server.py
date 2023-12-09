@@ -284,7 +284,7 @@ async def message_customer_1(data: Request):
     receieved_data = await data.body()
     # print("Encrypted payload :", receieved_data)
     broker_msg_decrypted = enc_dec.decrypt_data(receieved_data, broker_state)
-    hash_validated = enc_dec.validate_hash(broker_msg_decrypted, broker_state, "kh")
+    hash_validated = enc_dec.validate_hash(broker_msg_decrypted, broker_state)
     print(f"hash validated ? {hash_validated}")
     # print(f"Decrypted data {broker_msg_decrypted}")
     # create a new payload to merchant
@@ -305,9 +305,7 @@ async def message_customer_1(data: Request):
         print(f"Merchant keys {merchant_state.iv}, {merchant_state.session_key}")
         print(f"Payload received from merchant {merchant_payload}")
         merchant_msg_decrypted = enc_dec.decrypt_data(merchant_payload, merchant_state)
-        hash_validated = enc_dec.validate_hash(
-            merchant_msg_decrypted, merchant_state, "kh"
-        )
+        hash_validated = enc_dec.validate_hash(merchant_msg_decrypted, merchant_state)
         print(f"Merchant data decrypted {merchant_msg_decrypted['PRODUCTS']}")
         return "VALID"
 

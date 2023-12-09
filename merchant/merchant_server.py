@@ -65,7 +65,7 @@ async def read_root(request: Request):
 def auth_broker(encrypted_data):
     async def send_request():
         async with httpx.AsyncClient() as client:
-            response = await client.post(broker_state.auth_api, content=encrypted_data)
+            response = await client.post(broker_state.auth_api, json=encrypted_data)
 
             print("Response Status Code:", response.status_code)
             print("Response Content:", response.text)
@@ -121,10 +121,15 @@ def Send_Msg_MB(broker_dec_msg):
             },
         }
 
+        payload_hash = enc_dec.enc.hash_256(json.dumps(payload).encode("latin1"))
         payload = json.dumps(payload)
         encrypted_data = encrypt_data(payload, broker_public_key)
-        auth_broker(encrypted_data)
-        print("Message Sent (Encrypted Format): ", encrypted_data)
+        message_wrapper = {
+            "MSG": encrypted_data.decode("latin1"),
+            "HASH": payload_hash.decode("latin1"),
+        }
+        auth_broker(message_wrapper)
+        print("Message Sent (Encrypted Format): ", message_wrapper)
 
 
 @app.post("/handleinput")
@@ -261,10 +266,15 @@ async def message_merchant(data: Request):
 
 @app.post("/auth_merchant")
 async def auth_merchant(data: Request):
-    received_data = await data.body()
+    received_data = await data.json()
+    encrypted_message = received_data["MSG"].encode("latin1")
+    message_hash = received_data["HASH"].encode("latin1")
     print("Encrypted payload:", received_data)
 
-    Decrypted_MESS = decrypt_data(received_data, merchant_private_key)
+    Decrypted_MESS = decrypt_data(encrypted_message, merchant_private_key)
+    is_hash_validated = enc_dec.validate_rsa_hash(Decrypted_MESS, message_hash)
+    print(f"Hash validated for customer ? {is_hash_validated=}")
+
     Decrypted_MESS = json.loads(Decrypted_MESS)
     formatted_data = json.dumps(Decrypted_MESS, indent=2)
     print(f"Received from Broker:\n {formatted_data}")

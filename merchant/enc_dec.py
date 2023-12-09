@@ -6,17 +6,19 @@ enc = Encryption()
 decryption = Decryption()
 
 
-def validate_hash(decrypted_message, state, mode):
+def validate_rsa_hash(decrypted_message, provided_hash):
+    calculated_hash = enc.hash_256(decrypted_message.encode("latin1"))
+    return calculated_hash == provided_hash
+
+
+def validate_hash(decrypted_message, state):
     Key, _ = state.session_key, state.iv
     # get the hash included in the decrypted message and confirm the hash with the decrypted message
     decrypted_msg_hash = decrypted_message["HASH"]
     decrypted_message["HASH"] = ""
-    if mode != "RSA":
-        calculated_hash = enc.hash_256(decrypted_message + Key)
-    else:
-        calculated_hash = enc.hash_256(decrypted_message)
-    print(f"{decrypted_msg_hash=}, {calculated_hash=}")
-    return decrypted_msg_hash == calculated_hash
+    calculated_hash = enc.hash_256(decrypted_message + Key)
+
+    return calculated_hash == decrypted_msg_hash
 
 
 def decrypt_data(encrypted_message, state):
