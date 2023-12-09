@@ -3,13 +3,14 @@ from fastapi import Depends, FastAPI, Request, Form, HTTPException
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
+from DH import DiffieHellman
 from Auth_decryption import decrypt_data
 from Auth_encryption import rsa_encrypt_data
 from datetime import datetime
 import json
 import httpx
-import enc_dec
-import time
+import message
+
 
 # broker_public_key = "../bro_pub.pem"
 # customer1_private_key = "../cus1_pri.pem"
@@ -21,10 +22,22 @@ merchant_public_key = "../OLD KEYS/merchant_public_key.pem"
 customer1_public_key = "../OLD KEYS/customer1_public_key.pem"
 customer1_private_key = "../OLD KEYS/customer1_private_key.pem"
 
+Customer1 = DiffieHellman()
+
+private_key_C1B, public_key_C1B, prime_C1B = Customer1.generate_keypair(10000000019)
+private_key_C1M, public_key_C1M, prime_C1M = Customer1.generate_keypair(10000000061)
+
+print("private key_BM:", private_key_C1B, "public_key_BM:", public_key_C1B, "prime_BM:", prime_C1B)
+print("private key_BC1:", private_key_C1M, "public_key_BC1:", public_key_C1M, "prime_BC1:", prime_C1M)
+
+
 BROKER_API = f"http://127.0.0.1:8002"
 BROKER_AUTH_API = f"{BROKER_API}/auth_broker"
 BROKER_MSG_API = f"{BROKER_API}/message_customer_1_broker"
-REQUEST_ID = "112120120120"
+BROKER_DHKEC1_API = f"{BROKER_API}/DHKE_Customer1_broker"
+
+
+
 
 
 class CustomerInput(BaseModel):
@@ -39,16 +52,14 @@ class BrokerState:
         # assume DH is done
         self.iv = b"4832500747"
         self.session_key = b"4103583911"
-        self.request_id = "10129120"
 
 
 class MerchantState:
     def __init__(self) -> None:
         self.state = None
         self.auth_done = False
-        self.iv = b"6042302272"
-        self.session_key = b"7289135232"
-        self.request_id = "129129"
+        self.merchant_iv = b"6042302273"
+        self.merchant_session_key = b"7289135233"
 
 
 global_userid = "C1"
@@ -94,49 +105,36 @@ def message_broker(encrypted_data):
             print("Response Content:", response.text)
 
             if response.status_code == 200:
-                return {"message": "Sent data to broker"}
+                return {"message": "JSON request sent successfully"}
             else:
                 raise HTTPException(
                     status_code=response.status_code,
-                    detail="Failed to send data to broker request",
+                    detail="Failed to send JSON request",
                 )
 
     asyncio.create_task(send_message())
 
 
-def get_enc_payload_to_merchant(merchant_payload, broker_payload):
-    print("Encrypting merchant payload")
-    merchant_enc_payload, merchant_hash = enc_dec.get_encrypted_payload(
-        merchant_payload, merchant_state
-    )
-    broker_payload["PAYLOAD"] = merchant_enc_payload.decode("latin1")
-    # broker_payload["PAYLOAD"]["HASH"] = merchant_hash
-
-    broker_enc_payload, broker_hash = enc_dec.get_encrypted_payload(
-        broker_payload, broker_state
-    )
-
-    return broker_enc_payload
 
 
-def send_message(action):
-    action = action.upper()
-    if action == "VIEW_PRODUCTS":
-        merchant_payload = {
-            "TYPE": action,
-            "TIMESTAMP": str(datetime.now()),
-            "HASH": "",
-        }
-        broker_payload = {
-            "USERID": global_userid,
-            "HASH": "",
-            "TYPE": "TO_MERCHANT",
-            "TIMESTAMP": str(datetime.now()),
-            "PAYLOAD": "",
-        }
-        enc_payload = get_enc_payload_to_merchant(merchant_payload, broker_payload)
-        message_broker(enc_payload)
+def DHKE_Customer1_broker(encrypted_data):
+    # use keyed hash for sending messages after encryption
+    async def send_message():
+        async with httpx.AsyncClient() as client:
+            response = await client.post(BROKER_DHKEC1_API, content=encrypted_data)
 
+            print("Response Status Code:", response.status_code)
+            print("Response Content:", response.text)
+
+            if response.status_code == 200:
+                return {"message": "JSON request sent successfully"}
+            else:
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail="Failed to send JSON request",
+                )
+
+    asyncio.create_task(send_message())
 
 # endregion
 
@@ -157,13 +155,14 @@ def auth_payload_for_broker():
     payload = {
         "TYPE": "MUTUAL_AUTHENTICATION",
         "ENTITY": "Customer",
-        "TIMESTAMP": timestamp,
         "PAYLOAD": {
+            "MESSAGE": "Hi Broker",
             "LOGINCRED": {
-                "REQUEST_ID": broker_state.request_id,
+                "UID": "Customer_1",
                 "USER_ID": global_userid,
                 "PASSWORD": global_password,
             },
+            "TS": timestamp,
         },
     }
 
@@ -175,6 +174,48 @@ def auth_payload_for_broker():
     auth_broker(encrypted_data)
 
 
+def Customer_Broker_DHKE():
+    timestamp = str(datetime.now())
+    payload = {
+        "TYPE" : "DHKE",
+        "DH_PUBLIC_KEY" : public_key_C1B,
+        "TS" : timestamp
+    }    
+
+    payload = json.dumps(payload)
+    print("Message Sent : ", payload)
+    print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+    DHKE_Customer1_broker(payload)
+
+def Customer_Merchant_DHKE():
+    timestamp = str(datetime.now())
+    payload = {
+        "TYPE" : "DHKE WITH MERCHANT",
+        "DH_PUBLIC_KEY" : public_key_C1M,
+        "TS" : timestamp
+    }    
+
+    payload = json.dumps(payload)
+    print("Message Sent : ", payload)
+    print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+    DHKE_Customer1_broker(payload)
+
+
+def Shared_secret(entity,other_entity_public_key):
+ 
+    if entity == "Broker": 
+        shared_secret_C1B = Customer1.calculate_shared_secret(other_entity_public_key,private_key_C1B,prime_C1B)
+        print("Customer1_Broker_Secret key :" ,shared_secret_C1B)
+        return shared_secret_C1B
+        
+    
+    elif entity == "Merchant":
+        shared_secret_C1M = Customer1.calculate_shared_secret(other_entity_public_key,private_key_C1M,prime_C1M)
+        print("Customer1_Merchant_Secret key :" ,shared_secret_C1M)
+        return shared_secret_C1M
+    
+
+    
 async def auth_payload_to_merchant():
     # customer to merchant auth
     """
@@ -186,9 +227,11 @@ async def auth_payload_to_merchant():
 
     # #PAYLOAD
     Merchant_Payload = {
-        "ENTITY": "Customer",
-        "TYPE": "MERCHANT_AUTHENTICATION",
-        "REQUEST_ID": merchant_state.request_id,
+        "PAYLOAD": {
+            "ENTITY": "Customer",
+            "MESSAGE": "Hi Merchant ********",
+            "TYPE": "MERCHANT_AUTHENTICATION",
+        }
     }
 
     Merchant_Payload_JSON = json.dumps(Merchant_Payload)
@@ -201,12 +244,12 @@ async def auth_payload_to_merchant():
         "ENTITY": "Customer",
         "USERID": global_userid,
         "PAYLOAD": Merchant_Encrypted_Payload.decode("latin1"),
-        "TIMESTAMP": timestamp,
+        "TS": timestamp,
     }
 
     # # sign=signing(payload,self.customer1_private_key)
     # broker_payload = json.dumps(broker_payload)
-    encrypted_data, signature = enc_dec.get_encrypted_payload(
+    encrypted_data, signature = message.get_encrypted_payload(
         broker_payload, broker_state
     )
     # print("Message Sent (Encrypted Format): ", encrypted_data)
@@ -227,28 +270,32 @@ async def handle_input(action_number: int = Form(...)):
         timestamp = str(datetime.now())
         # PAYLOAD
         auth_payload_for_broker()
-        return {"message": "AUTH_REQUEST_BROKER"}
 
     # send auth request to merchant through broker
     elif action_number == 2:
         await auth_payload_to_merchant()
-        return {"message": "AUTH_REQUEST_BROKER"}
 
+        return {"message": "Sending request to merchant"}
     # view products
     elif action_number == 3:
-        print(f"sending view prod request to merchant through broker")
-        send_message("VIEW_PRODUCTS")
-        return {"message": "MESSAGE_MERCHANT"}
+        pass
 
     # buy product
     elif action_number == 4:
         pass
 
+    # buy product
+    elif action_number == 5:
+        Customer_Merchant_DHKE()
+        return {"message": "Sending request to merchant"}
+    
+
+
 
 @app.post("/auth_customer_1")
 async def handle_customer_input(data: Request):
     receieved_data = await data.body()
-    print("Encrypted payload :", receieved_data)
+    print("payload :", receieved_data)
     Decrypted_MESS = decrypt_data(receieved_data, customer1_private_key)
 
     Decrypted_MESS = json.loads(Decrypted_MESS)
@@ -258,44 +305,53 @@ async def handle_customer_input(data: Request):
     if "MUTUAL_AUTHENTICATION" == Decrypted_MESS["TYPE"]:
         entity = Decrypted_MESS["ENTITY"]
         if entity == "Broker":
-            if Decrypted_MESS.get("RESPONSE_ID") == broker_state.request_id:
+            payload = Decrypted_MESS["PAYLOAD"]
+            if payload["FLAG"] == "VALIDATED":
                 print("Mutual authentication with broker successfull")
                 broker_state.auth_done = True
-                print(f"broker request id {Decrypted_MESS.get('REQUEST_ID')}")
                 # return templates.TemplateResponse("index.html", {"request": data})
-                return Decrypted_MESS.get("REQUEST_ID")
+                return "VALIDATED"
             else:
                 broker_state.auth_done = False
 
 
-# receiving msg from broker
+# receiving msg from customer1
 @app.post("/message_customer_1")
 async def message_customer_1(data: Request):
     # use keyed hash
     receieved_data = await data.body()
     # print("Encrypted payload :", receieved_data)
-    broker_msg_decrypted = enc_dec.decrypt_data(receieved_data, broker_state)
-    # print(f"Decrypted data {broker_msg_decrypted}")
+    customer_msg_decrypted = message.decrypt_data(receieved_data, broker_state)
+    print(f"Decrypted data {customer_msg_decrypted}")
     # create a new payload to merchant
-    if "MERCHANT_AUTHENTICATION" == broker_msg_decrypted["TYPE"]:
-        print(f"Payload received from broker {broker_msg_decrypted}")
-        if broker_msg_decrypted["PAYLOAD"]["RESPONSE_ID"] == merchant_state.request_id:
-            merchant_state.auth_done = True
-            print(f"MERCHANT AUTHENTICATED")
-
-        else:
-            merchant_state.auth_done = False
-            print(f"MERCHANT NOT AUTHENTICATED")
-
+    if "MERCHANT_AUTHENTICATION" == customer_msg_decrypted["TYPE"]:
+        print("Payload received from broker")
         # print(f"Modified payload forwarded to Merchant")
 
-    elif "FROM_MERCHANT" == broker_msg_decrypted["TYPE"]:
-        merchant_payload = broker_msg_decrypted["PAYLOAD"].encode("latin1")
-        print(f"Merchant keys {merchant_state.iv}, {merchant_state.session_key}")
-        print(f"Payload received from merchant {merchant_payload}")
-        merchant_msg_decrypted = enc_dec.decrypt_data(merchant_payload, merchant_state)
-        print(f"Merchant data decrypted {merchant_msg_decrypted['PRODUCTS']}")
-        return "VALID"
+# receiving msg from customer1
+@app.post("/DHKE_customer_1")
+async def DHKE_customer_1(data: Request):
+    # use keyed hash
+    receieved_data = await data.body()
+    print("PAYLOAD1:" , receieved_data)
+    receieved_data = receieved_data.decode('utf-8')
+    print("PAYLOAD2:" , receieved_data)
+    receieved_data = json.loads(receieved_data)
+    print(receieved_data)
+    
+    if "DHKE" == receieved_data["TYPE"]:
+        public_key_BC1 = receieved_data["DH_PUBLIC_KEY"]
+        print("Diffe_hellman : public key of customer1 recieved")
+        Shared_secret("Broker",public_key_BC1)
+        Customer_Broker_DHKE()
+    
+
+    elif "DHKE WITH Customer" == receieved_data["TYPE"]:
+        public_key_MC1 = receieved_data["DH_PUBLIC_KEY"]
+        print("Diffe_hellman : public key of customer1 recieved")
+        Shared_secret("Merchant",public_key_MC1)
+
+    
 
 
 # endregion
