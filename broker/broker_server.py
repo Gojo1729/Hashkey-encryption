@@ -231,6 +231,14 @@ async def auth_broker(data: Request):
                 merchant_state.auth_done = True
                 return_msg = Decrypted_MESS["PAYLOAD"]["REQUEST_ID"]
                 return return_msg
+
+        elif entity == "Customer":
+            login_cred = Decrypted_MESS["PAYLOAD"]["LOGINCRED"]
+            print(login_cred)
+            print("Authentication payload received from Customer.")
+            return_msg = BROKER_CUSTOMER(login_cred)
+
+            return "BROKER: AUTH REQUEST RECEIVED"
     else:
         print("Received payload does not contain any information to forward.")
         return ""
