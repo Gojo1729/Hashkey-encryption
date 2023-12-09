@@ -308,6 +308,17 @@ async def message_merchant_broker(data: Request):
         }
         enc_payload, _ = enc_dec.encrypt_data(customer_payload, valid_customer)
         send_message(valid_customer, enc_payload, auth=False)
+    elif "PURCHASE_CONSENT" == msg_type:
+        # get the payload, append his message to customer and send it
+        customer_payload = {
+            "TYPE": "PURCHASE_CONSENT",
+            "ENTITY": "BROKER",
+            "HASH": "",
+            "TIMESTAMP": str(datetime.now()),
+            "PAYLOAD": merchant_msg_decrypted["PAYLOAD"],
+        }
+        enc_payload, _ = enc_dec.encrypt_data(customer_payload, valid_customer)
+        send_message(valid_customer, enc_payload, auth=False)
     return "MESSAGE SENT TO CUSTOMER"
 
 
@@ -336,6 +347,29 @@ async def message_customer_1_broker(data: Request):
         """
         customer_msg_decrypted["TYPE"] = "FROM_CUSTOMER"
         customer_to_merchant(customer_msg_decrypted)
+    elif "PAYMENT_CONSENT" == msg_type:
+        # get the payload, append his message to customer and send it
+        broker_to_merchant(customer_msg_decrypted)
+
+def broker_to_merchant(customer_decrypted_message):
+    random_customer_id: str = customers_state[
+        customer_decrypted_message["USERID"]
+    ].random_id
+    customer_decrypted_message["USERID"] = random_customer_id
+    customer_decrypted_message["TYPE"] = "Payment_Done"
+    customer_decrypted_message["ENTITY"] = "Broker"
+    customer_decrypted_message["SIGNATURE"] = ""
+    customer_decrypted_message["MESSAGE"] = "Payment Done --  Funds Transferred"
+    customer_decrypted_message["TIMESTAMP"] = str(datetime.now())
+    payload = json.dumps(customer_decrypted_message)
+    (
+        encrypted_payload_to_merchant,
+        merchant_hash,
+    ) = enc_dec.encrypt_data(payload, merchant_state)
+    # encrypted_data = encrypt_data(payload, merchant_public_key)
+    # sign=signing(payload,self.broker_private_key)
+    send_message(merchant_state, encrypted_payload_to_merchant)
+
 
 
 # receiving msg from customer1

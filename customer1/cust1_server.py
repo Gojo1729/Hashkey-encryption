@@ -136,6 +136,38 @@ def send_message(action):
         }
         enc_payload = get_enc_payload_to_merchant(merchant_payload, broker_payload)
         message_broker(enc_payload)
+    elif action == "BUY_PRODUCTS":
+        Items ={}
+        n = int(input("Enter the number of type of products you want to purchase ?"))
+        for i in range(0,n):
+            j = int(input("Enter the product ID"))
+            Items[j] = input("Enter the Number of items you want to purchase")
+        merchant_payload = {
+            "TYPE": action,
+            "PRODUCTS": Items,
+            "TIMESTAMP": str(datetime.now()),
+            "HASH": "",
+        }
+        broker_payload = {
+            "USERID": global_userid,
+            "HASH": "",
+            "TYPE": "TO_MERCHANT",
+            "TIMESTAMP": str(datetime.now()),
+            "PAYLOAD": "",
+        }
+        enc_payload = get_enc_payload_to_merchant(merchant_payload, broker_payload)
+        message_broker(enc_payload)
+    elif action == "PAYMENT":
+        broker_payload = {
+            "USERID": global_userid,
+            "HASH": "",
+            "TYPE": "PAYMENT_CONSENT",
+            "MESSAGE": "Proceed with the Payment",
+            "TIMESTAMP": str(datetime.now()),
+            "PAYLOAD": "",
+        }
+        enc_payload = get_enc_payload_to_merchant("", broker_payload)
+        message_broker(enc_payload)
 
 
 # endregion
@@ -242,7 +274,9 @@ async def handle_input(action_number: int = Form(...)):
 
     # buy product
     elif action_number == 4:
-        pass
+        print(f"sending Buy Products Request to Merchant through broker")
+        send_message("BUY_PRODUCTS")
+        return {"message": "MESSAGE_MERCHANT"}
 
 
 @app.post("/auth_customer_1")
@@ -293,9 +327,17 @@ async def message_customer_1(data: Request):
         merchant_payload = broker_msg_decrypted["PAYLOAD"].encode("latin1")
         print(f"Merchant keys {merchant_state.iv}, {merchant_state.session_key}")
         print(f"Payload received from merchant {merchant_payload}")
-        merchant_msg_decrypted = enc_dec.decrypt_data(merchant_payload, merchant_state)
-        print(f"Merchant data decrypted {merchant_msg_decrypted['PRODUCTS']}")
+        merchant_msg_decrypted = enc_dec.decrypt_data(merchant_payload, merchant_state)     
         return "VALID"
-
+    
+    elif "PURCHASE_CONSENT" == broker_msg_decrypted["TYPE"]:
+        merchant_payload = broker_msg_decrypted["PAYLOAD"].encode("latin1")
+        merchant_msg_decrypted = enc_dec.decrypt_data(merchant_payload, merchant_state)
+        c = input("Merchant Requested Payment Request for the purchase of the following items {} Yes/No".format(merchant_msg_decrypted["PRODUCTS"]))
+        if c=="Yes": 
+            send_message("PAYMENT")
+        else: 
+            print("Payment Aborted")
+        return "VALID"
 
 # endregion
