@@ -36,9 +36,6 @@ class Decryption:
             b = self.hash_256(Key + enc_block)
 
         unpaded_dmsg = concatenated_decrypted_message
-        print(
-            f"************* decrypted message {concatenated_decrypted_message}, {len(concatenated_decrypted_message)=}, { (len(unpaded_dmsg) % 32)} ***************"
-        )
         try:
             unpaded_dmsg = unpad(concatenated_decrypted_message, 32)
         except:

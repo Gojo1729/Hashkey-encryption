@@ -80,9 +80,9 @@ class MerchantState:
 # Create an instance of the FastAPI class
 app = FastAPI()
 templates = Jinja2Templates(directory="templates")
-customer1_state = Customer1State()
-customer2_state = Customer2State()
-customers_state = {"C1": customer1_state, "C2": customer2_state}
+customer_1_state = Customer1State()
+customer_2_state = Customer2State()
+customers_state = {"C1": customer_1_state, "C2": customer_2_state}
 merchant_state = MerchantState()
 
 
@@ -307,14 +307,14 @@ def get_valid_customer(id, from_entity):
 async def message_merchant_broker(data: Request):
     # use keyed hash
     receieved_data = await data.body()
-    # print("Encrypted payload :", receieved_data)
+    print(f"Encrypted payload in bytes from merchant {receieved_data} \n {stars}")
     merchant_msg_decrypted = enc_dec.decrypt_data(receieved_data, merchant_state)
     msg_hash = enc_dec.validate_hash(merchant_msg_decrypted, merchant_state)
     print(f"Hash of message from merchant validated {msg_hash}")
-    msg_type = merchant_msg_decrypted["TYPE"]
-    cust_rid = merchant_msg_decrypted["RID"]
-    valid_customer = get_valid_customer(cust_rid, "MERCHANT")
 
+    msg_type = merchant_msg_decrypted["TYPE"]
+    cust_rid = merchant_msg_decrypted["USERID"]
+    valid_customer = get_valid_customer(cust_rid, "MERCHANT")
     if valid_customer is None:
         return "INVALID_MESSAGE"
 
@@ -333,6 +333,10 @@ async def message_merchant_broker(data: Request):
             "HASH": "",
             "TIMESTAMP": timestamp,
         }
+        customer_hash = enc_dec.enc.keyed_hash(
+            json.dumps(customer_payload).encode("latin1"), valid_customer
+        )
+        customer_payload["HASH"] = customer_hash.decode("latin1")
         enc_payload = enc_dec.encrypt_payload(customer_payload, valid_customer)
         send_message(valid_customer, enc_payload, auth=False)
 
@@ -345,6 +349,10 @@ async def message_merchant_broker(data: Request):
             "TIMESTAMP": str(datetime.now()),
             "PAYLOAD": merchant_msg_decrypted["PAYLOAD"],
         }
+        customer_hash = enc_dec.enc.keyed_hash(
+            json.dumps(customer_payload).encode("latin1"), valid_customer
+        )
+        customer_payload["HASH"] = customer_hash.decode("latin1")
         enc_payload = enc_dec.encrypt_payload(customer_payload, valid_customer)
         send_message(valid_customer, enc_payload, auth=False)
     return "MESSAGE SENT TO CUSTOMER"
@@ -356,9 +364,9 @@ async def message_customer_1_broker(data: Request):
     # use keyed hash
     receieved_data = await data.body()
     print(f"Encrypted payload in bytes from customer1 {receieved_data} \n {stars}")
-    customer_msg_decrypted = enc_dec.decrypt_data(receieved_data, customer1_state)
+    customer_msg_decrypted = enc_dec.decrypt_data(receieved_data, customer_1_state)
     print(f"Decrypted data {customer_msg_decrypted} \n {stars}")
-    msg_hash = enc_dec.validate_hash(customer_msg_decrypted, customer1_state)
+    msg_hash = enc_dec.validate_hash(customer_msg_decrypted, customer_1_state)
     print(f"Hash of message from customer validated {msg_hash}")
     msg_type = customer_msg_decrypted["TYPE"]
 
@@ -385,8 +393,8 @@ async def message_customer_2_broker(data: Request):
     # use keyed hash
     receieved_data = await data.body()
     # print("Encrypted payload :", receieved_data)
-    customer_msg_decrypted = enc_dec.decrypt_data(receieved_data, customer2_state)
-    msg_hash = enc_dec.validate_hash(customer_msg_decrypted, customer2_state)
+    customer_msg_decrypted = enc_dec.decrypt_data(receieved_data, customer_2_state)
+    msg_hash = enc_dec.validate_hash(customer_msg_decrypted, customer_2_state)
     print(f"Hash of message from merchant validated {msg_hash}")
     print(f"Decrypted data {customer_msg_decrypted}, {type(customer_msg_decrypted)=}")
     # create a new payload to merchant
