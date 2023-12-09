@@ -13,7 +13,7 @@ def rsa_decrypt_data(encrypted_data, private_key_path):
     cipher = PKCS1_OAEP.new(private_key)
 
     # Decrypt the data
-    decrypted_data = cipher.decrypt(encrypted_data).decode("utf-8")
+    decrypted_data = cipher.decrypt(encrypted_data).decode("latin1")
 
     return decrypted_data
 

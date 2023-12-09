@@ -16,9 +16,9 @@ def validate_hash(decrypted_message, state):
     # get the hash included in the decrypted message and confirm the hash with the decrypted message
     decrypted_msg_hash = decrypted_message["HASH"]
     decrypted_message["HASH"] = ""
-    calculated_hash = enc.hash_256(decrypted_message + Key)
-
-    return calculated_hash == decrypted_msg_hash
+    calculated_hash = enc.hash_256(json.dumps(decrypted_message).encode("latin1") + Key)
+    print(f"Calculated hash {calculated_hash}")
+    return calculated_hash == decrypted_msg_hash.encode("latin1")
 
 
 def decrypt_data(encrypted_message, state):
@@ -28,16 +28,7 @@ def decrypt_data(encrypted_message, state):
 
 
 def encrypt_payload(payload, state):
-    """
-    For hash part, get the hash of the message without hash field, then reinsert
-    the hash key and value and then encrypt it
-    """
     Key, IV = state.session_key, state.iv
-    encoded_MESS_CB = json.dumps(payload).encode("latin1")
-    # calculate the hash of the message without the hash included
-    encoded_msg_hash = enc.hash_256(encoded_MESS_CB + Key)
-    payload["HASH"] = encoded_msg_hash
-    # encrypt the message along with hash
     encoded_MESS_CB = json.dumps(payload).encode("latin1")
     enc_data = enc.encrypt(encoded_MESS_CB, Key, IV)
     return enc_data

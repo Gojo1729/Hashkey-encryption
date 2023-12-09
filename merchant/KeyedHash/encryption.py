@@ -1,6 +1,6 @@
 from Crypto.Hash import SHA256
 import math
-from Crypto.Hash import SHA256
+from Crypto.Hash import SHA256, SHA1
 from Crypto.Random import get_random_bytes
 from Crypto.Util import strxor
 from Crypto.Util.Padding import pad, unpad
@@ -14,6 +14,10 @@ import random
 class Encryption:
     def hash_256(self, message):
         sha_256 = SHA256.new(message).digest()
+        return sha_256
+
+    def keyed_hash(self, message, state):
+        sha_256 = SHA256.new(message + state.session_key).digest()
         return sha_256
 
     def encrypt(self, message: bytes, Key: bytes, IV: bytes):

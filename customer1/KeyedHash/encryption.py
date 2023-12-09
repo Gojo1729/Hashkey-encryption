@@ -16,6 +16,10 @@ class Encryption:
         sha_256 = SHA256.new(message).digest()
         return sha_256
 
+    def keyed_hash(self, message, state):
+        sha_256 = SHA256.new(message + state.session_key).digest()
+        return sha_256
+
     def encrypt(self, message: bytes, Key: bytes, IV: bytes):
         batch_size = 32
         msg_len = len(message)

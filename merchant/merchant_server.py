@@ -3,8 +3,8 @@ from fastapi import Depends, FastAPI, Request, Form, HTTPException
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
-from Auth_decryption import decrypt_data
-from Auth_encryption import encrypt_data
+from Auth_decryption import rsa_decrypt_data
+from Auth_encryption import rsa_encrypt_data
 from datetime import datetime
 import json
 import httpx
@@ -18,6 +18,7 @@ import enc_dec
 broker_public_key = "../OLD KEYS/broker_public_key.pem"
 merchant_public_key = "../OLD KEYS/merchant_public_key.pem"
 merchant_private_key = "../OLD KEYS/merchant_private_key.pem"
+stars = "*" * 10
 
 
 class CustomerInput(BaseModel):
@@ -123,7 +124,7 @@ def Send_Msg_MB(broker_dec_msg):
 
         payload_hash = enc_dec.enc.hash_256(json.dumps(payload).encode("latin1"))
         payload = json.dumps(payload)
-        encrypted_data = encrypt_data(payload, broker_public_key)
+        encrypted_data = rsa_encrypt_data(payload, broker_public_key)
         message_wrapper = {
             "MSG": encrypted_data.decode("latin1"),
             "HASH": payload_hash.decode("latin1"),
@@ -178,6 +179,7 @@ def handle_message(payload, rid):
                     "ENTITY": "Merchant",
                     "RESPONSE_ID": payload.get("REQUEST_ID"),
                 },
+                "HASH": "",
             }
             encrypt_broker_payload = enc_dec.encrypt_payload(
                 broker_payload, broker_state
@@ -224,12 +226,18 @@ def handle_message(payload, rid):
 
 def take_action_for_customer(payload, rid, enc_type):
     enc_payload = payload["PAYLOAD"].encode("latin1")
-    print(f"encpayload {enc_payload}, {type(enc_payload)=}")
+    print(f"Encrypted payload from customer {enc_payload}")
     # decrypt using rsa
     if enc_type == "rsa":
-        decypted_customer_msg = decrypt_data(enc_payload, merchant_private_key)
+        customer_hash = payload["MERCHANT_HASH"].encode("latin1")
+        decypted_customer_msg = rsa_decrypt_data(enc_payload, merchant_private_key)
         decrypted_customer_msg_json = json.loads(decypted_customer_msg)
-        print(f"Customer data decrypted {decrypted_customer_msg_json}, {rid=}")
+        is_hash_validated = enc_dec.validate_rsa_hash(
+            decypted_customer_msg, customer_hash
+        )
+        print(
+            f"Customer data decrypted {decrypted_customer_msg_json}, {rid=}, {is_hash_validated=}"
+        )
         return handle_message(decrypted_customer_msg_json, rid)
 
     elif enc_type == "keyedhash":
@@ -242,16 +250,16 @@ def take_action_for_customer(payload, rid, enc_type):
             return handle_message(decrypted_customer_msg_json, rid)
 
 
-# use keyed hash
+# recieving message from broker
 @app.post("/message_merchant")
 async def message_merchant(data: Request):
     receieved_data = await data.body()
-
-    # print("Encrypted payload :", receieved_data)
+    print(f"Encrypted payload in bytes from merchant {receieved_data} \n {stars}")
     broker_msg_decrypted = enc_dec.decrypt_data(receieved_data, broker_state)
-    print(
-        f"Decrypted data from broker {type(broker_msg_decrypted)} {broker_msg_decrypted}"
-    )
+    print(f"Decrypted data {broker_msg_decrypted} \n {stars}")
+    msg_hash = enc_dec.validate_hash(broker_msg_decrypted, broker_state)
+    print(f"Hash of message from broker validated {msg_hash} \n{stars}")
+
     msg_type = broker_msg_decrypted["TYPE"]
     cust_id = broker_msg_decrypted["USERID"]
     if "MERCHANT_AUTHENTICATION" == msg_type:
@@ -269,9 +277,10 @@ async def auth_merchant(data: Request):
     received_data = await data.json()
     encrypted_message = received_data["MSG"].encode("latin1")
     message_hash = received_data["HASH"].encode("latin1")
-    print("Encrypted payload:", received_data)
+    print(f"original message {received_data}")
+    print(f"Encrypted payload : {encrypted_message}\n ---- message hash {message_hash}")
 
-    Decrypted_MESS = decrypt_data(encrypted_message, merchant_private_key)
+    Decrypted_MESS = rsa_decrypt_data(encrypted_message, merchant_private_key)
     is_hash_validated = enc_dec.validate_rsa_hash(Decrypted_MESS, message_hash)
     print(f"Hash validated for customer ? {is_hash_validated=}")
 

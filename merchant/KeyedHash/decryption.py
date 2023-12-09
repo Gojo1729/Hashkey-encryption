@@ -15,7 +15,7 @@ class Decryption:
         sha_256 = SHA256.new(message).digest()
         return sha_256
 
-    def decrypt(self, encrypted_message: bytes, Key: bytes, IV: bytes):
+    def decrypt(self, encrypted_message: bytes, Key: bytes, IV: bytes) -> dict:
         b = self.hash_256(Key + IV)
         print(f"Length of encrypted message {len(encrypted_message)}")
 
