@@ -2,6 +2,7 @@ from fastapi import FastAPI, Request, Form, HTTPException
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
+from DH import DiffieHellman
 from Auth_decryption import rsa_decrypt_data, verify
 from Auth_encryption import rsa_encrypt_data
 from datetime import datetime
@@ -10,7 +11,7 @@ import httpx
 import pandas as pd
 import asyncio
 import enc_dec
-
+import hashlib
 
 # broker_public_key = "../bro_pub.pem"
 # broker_private_key = "../bro_pri.pem"
@@ -20,6 +21,7 @@ import enc_dec
 broker_public_key = "../OLD KEYS/broker_public_key.pem"
 broker_private_key = "../OLD KEYS/broker_private_key.pem"
 stars = "*" * 10
+Broker = DiffieHellman()
 
 
 class CustomerData(BaseModel):
@@ -29,7 +31,11 @@ class CustomerData(BaseModel):
 class Customer1State:
     def __init__(self) -> None:
         self.user_id = "C1"
-        self.password = "pass1"
+        self.salt = "Net_sec_1"
+        self.password = (
+            "4f59554b34b1d0fe8832e8fab4b638f51a770f879bf232a36100f316aa56b2c0"
+        )
+        self.user_id = "C1"
         self.host = "http://127.0.0.1:8001"
         self.msg_api = f"{self.host}/message_customer_1"
         self.auth_api = f"{self.host}/auth_customer_1"
@@ -42,15 +48,26 @@ class Customer1State:
         self.public_key = "../OLD KEYS/customer1_public_key.pem"
         self.request_id = "10129120"
         self.entity = "Customer"
+        self.DHKE_api = f"{self.host}/DHKE_customer_1"
+        (
+            self.dh_private_key,
+            self.dh_public_key,
+            self.dh_prime,
+        ) = Broker.generate_keypair(10000000019)
+        self.dh_shared_key = None
 
 
 class Customer2State:
     def __init__(self) -> None:
         self.user_id = "C2"
-        self.password = "pass2"
+        self.salt = "Net_sec_2"
+        self.password = (
+            "c5ffcdf4de1aa33a92a65c60cd74d38a88a399c6f3324a7d601d1ff00bb56b12"
+        )
         self.host = "http://127.0.0.1:8004"
         self.msg_api = f"{self.host}/message_customer_2"
         self.auth_api = f"{self.host}/auth_customer_2"
+        self.DHKE_api = f"{self.host}/DHKE_customer_2"
         self.state = None
         self.auth_done = False
         self.random_id = "1001991"
@@ -60,6 +77,12 @@ class Customer2State:
         self.public_key = "../OLD KEYS/customer2_public_key.pem"
         self.request_id = "10129121"
         self.entity = "Customer"
+        (
+            self.dh_private_key,
+            self.dh_public_key,
+            self.dh_prime,
+        ) = Broker.generate_keypair(10000000033)
+        self.dh_shared_key = None
 
 
 class MerchantState:
@@ -75,22 +98,42 @@ class MerchantState:
         self.public_key = "../OLD KEYS/merchant_public_key.pem"
         self.request_id = "10129122"
         self.entity = "Merchant"
+        self.DHKE_api = f"{self.host}/DHKE_merchant"
+        (
+            self.dh_private_key,
+            self.dh_public_key,
+            self.dh_prime,
+        ) = Broker.generate_keypair(10000000007)
+        self.dh_shared_key = None
+
+
+class Hashcheck:
+    def hash_password(self, salt, plain_text):
+        combined_text = salt + plain_text
+        hashed_text = hashlib.sha256(combined_text.encode()).hexdigest()
+        return hashed_text
 
 
 # Create an instance of the FastAPI class
 app = FastAPI()
 templates = Jinja2Templates(directory="templates")
-customer_1_state = Customer1State()
-customer_2_state = Customer2State()
-customers_state = {"C1": customer_1_state, "C2": customer_2_state}
+customer_1_state: Customer1State = Customer1State()
+customer_2_state: Customer2State = Customer2State()
+customers_state: dict = {"C1": customer_1_state, "C2": customer_2_state}
+hashcheck = Hashcheck()
+
 merchant_state = MerchantState()
+
+AUTH_MSG = "auth"
+DHKE_MSG = "dhke"
+KEYED_MSG = "kh"
 
 
 # region message
-def send_message(state, encrypted_data, auth=False):
+def send_message(state, encrypted_data, message_type):
     async def send_request():
         async with httpx.AsyncClient() as client:
-            if auth:
+            if message_type == AUTH_MSG:
                 response = await client.post(state.auth_api, json=encrypted_data)
                 print(
                     f"{response=}, {response.status_code=}, {type(response.status_code)=}, {type(response.text)=}"
@@ -119,7 +162,13 @@ def send_message(state, encrypted_data, auth=False):
                         print("Error in sending auth message to merchant")
 
                 return "BROKER: MESSAGE SENT"
-            else:
+            elif message_type == DHKE_MSG:
+                response = await client.post(state.DHKE_api, content=encrypted_data)
+                print(
+                    f"{response=}, {response.status_code=}, {type(response.status_code)=}, {type(response.text)=}"
+                )
+
+            elif message_type == KEYED_MSG:
                 response = await client.post(state.msg_api, content=encrypted_data)
                 # print(
                 #     f"{response=}, {response.status_code=}, {type(response.status_code)=}, {type(response.text)=}"
@@ -135,6 +184,21 @@ def send_message(state, encrypted_data, auth=False):
 def validate_credentials(user_id, passwd):
     print(f"Validating: User ID = {user_id}, Password = {passwd}")
     valid_user = customers_state.get(user_id)
+    if user_id == customer_1_state.user_id:
+        hash_pass = hashcheck.hash_password(customer_1_state.salt, passwd)
+        print(hash_pass)
+        if customer_1_state.password == hash_pass:
+            return valid_user
+        else:
+            return None
+    elif user_id == customer_2_state.user_id:
+        hash_pass = hashcheck.hash_password(customer_2_state.salt, passwd)
+        if customer_2_state.password == hash_pass:
+            print("valid")
+            return valid_user
+        else:
+            return None
+
     return valid_user if valid_user is not None else None
 
 
@@ -162,7 +226,7 @@ def BROKER_CUSTOMER(login_creds):
         "MSG": encrypted_data.decode("latin1"),
         "HASH": payload_hash.decode("latin1"),
     }
-    send_message(valid_user, message_wrapper, auth=True)
+    send_message(valid_user, message_wrapper, AUTH_MSG)
 
 
 def auth_merchant():
@@ -185,7 +249,7 @@ def auth_merchant():
         "MSG": encrypted_data.decode("latin1"),
         "HASH": payload_hash.decode("latin1"),
     }
-    send_message(merchant_state, message_wrapper, auth=True)
+    send_message(merchant_state, message_wrapper, AUTH_MSG)
     print("Authentication response sent to Merchant.")
 
 
@@ -210,7 +274,7 @@ def customer_to_merchant(customer_decrypted_message):
     print(
         f"Encrypted message sent to merchant {encrypted_payload_to_merchant} \n \n *** Hash is {merchant_payload_hash}"
     )
-    send_message(merchant_state, encrypted_payload_to_merchant)
+    send_message(merchant_state, encrypted_payload_to_merchant, KEYED_MSG)
 
 
 # Define a simple endpoint
@@ -219,18 +283,160 @@ async def read_root(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
 
+# region DH generation
+def BROKER_CUSTOMER1_DHKE():  # THIS IS FOR SENDING THE KEY TO CUSTOMER1
+    timestamp = str(datetime.now())
+    payload = {
+        "TYPE": "DHKE",
+        "DH_PUBLIC_KEY": customer_1_state.dh_public_key,
+        "TS": timestamp,
+    }
+
+    payload = json.dumps(payload)
+    print("Message Sent : ", payload)
+    print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+    send_message(customer_1_state, payload, DHKE_MSG)
+
+
+def BROKER_MERCHANT_DHKE():  # THIS IS FOR SENDING THE KEY TO MERCHANT
+    timestamp = str(datetime.now())
+    payload = {
+        "TYPE": "DHKE",
+        "DH_PUBLIC_KEY": merchant_state.dh_public_key,
+        "TS": timestamp,
+    }
+
+    payload = json.dumps(payload)
+    print("Message Sent : ", payload)
+    print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+    send_message(merchant_state, payload, DHKE_MSG)
+
+
+def BROKER_CUSTOMER2_DHKE():  # THIS IS FOR SENDING THE KEY TO CUSTOMER2
+    timestamp = str(datetime.now())
+    payload = {
+        "TYPE": "DHKE",
+        "UID": "",
+        "DH_PUBLIC_KEY": customer_2_state.dh_public_key,
+        "TS": timestamp,
+    }
+
+    payload = json.dumps(payload)
+    print("Message Sent : ", payload)
+    print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+    send_message(customer_2_state, payload, DHKE_MSG)
+
+
+# endregion
+
+
+# customer 1 sending DH keys to merchant through broker
+@app.post("/DHKE_Customer1_broker")
+async def DHKE_Customer1_broker(data: Request):
+    receieved_data = await data.body()
+    receieved_data = receieved_data.decode("utf-8")
+    receieved_data = json.loads(receieved_data)
+    print("payload :", receieved_data)
+
+    if "DHKE" == receieved_data["TYPE"]:  # THIS IS WHEN CUSTOMER1 SENDS HIS KEY
+        public_key_C1B = receieved_data["DH_PUBLIC_KEY"]
+        print("Diffe_hellman : public key of customer1 recieved")
+        customer_1_state.dh_shared_key = Broker.calculate_shared_secret(
+            public_key_C1B, customer_1_state.dh_private_key, customer_1_state.dh_prime
+        )
+        print(f"Customer 1 DH session key {customer_1_state.dh_shared_key}")
+
+    elif (
+        "DHKE WITH MERCHANT" == receieved_data["TYPE"]
+    ):  # THIS IS WHEN CUSTOMER1 WANTS TO SEND HIS KEY TO MERCHANT
+        print("Diffe_hellman : Recieved from Customer forwarding to Merchant")
+        receieved_data["RID"] = customer_1_state.random_id
+        payload = json.dumps(receieved_data)
+        print("Message Sent : ", payload)
+        print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+        send_message(merchant_state, payload, DHKE_MSG)
+
+
+# region DH apis
+
+
+@app.post("/DHKE_Customer2_broker")
+async def DHKE_Customer2_broker(data: Request):
+    receieved_data = await data.body()
+    receieved_data = receieved_data.decode("utf-8")
+    receieved_data = json.loads(receieved_data)
+    print("payload :", receieved_data)
+
+    if "DHKE" == receieved_data["TYPE"]:  # THIS IS WHEN CUSTOMER2 SENDS H   IS KEY
+        public_key_C2B = receieved_data["DH_PUBLIC_KEY"]
+        print("Diffe_hellman : public key of customer2 recieved")
+        customer_2_state.dh_shared_key = Broker.calculate_shared_secret(
+            public_key_C2B, customer_2_state.dh_private_key, customer_2_state.dh_prime
+        )
+        print(f"Customer 2 DH session key {customer_2_state.dh_shared_key}")
+
+    elif (
+        "DHKE WITH MERCHANT" == receieved_data["TYPE"]
+    ):  # THIS IS WHEN CUSTOMER1 WANTS TO SEND HIS KEY TO MERCHANT
+        print("Diffe_hellman : Recieved from Customer forwarding to Merchant")
+        receieved_data["RID"] = customer_2_state.random_id
+        payload = json.dumps(receieved_data)
+        print("Message Sent : ", payload)
+        print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+        send_message(merchant_state, payload, DHKE_MSG)
+
+
+@app.post("/DHKE_Merchant_broker")
+async def DHKE_Merchant_broker(data: Request):
+    receieved_data = await data.body()
+    receieved_data = receieved_data.decode("utf-8")
+    receieved_data = json.loads(receieved_data)
+    print("payload :", receieved_data)
+
+    if "DHKE" == receieved_data["TYPE"]:
+        public_key_MB = receieved_data["DH_PUBLIC_KEY"]
+        print("Diffe_hellman : public key of Merchant recieved")
+        merchant_state.dh_shared_key = Broker.calculate_shared_secret(
+            public_key_MB, merchant_state.dh_private_key, merchant_state.dh_prime
+        )
+        print(f"Merchant - Broker DH session key {merchant_state.dh_shared_key}")
+
+    elif (
+        "DHKE WITH Customer" == receieved_data["TYPE"]
+    ):  # THIS SEND TO CUSTOMER 1 OR 2 DEPENDING ON RID AND DEL RID BEFORE SENDING IT
+        print(f"USERID {receieved_data}")
+        for customer_state in customers_state.values():
+            if customer_state.random_id == receieved_data["USERID"]:
+                payload = json.dumps(receieved_data)
+                print("Message Sent : ", payload)
+                print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+                send_message(customer_state, payload, DHKE_MSG)
+                print(
+                    f"Diffe_hellman : Recieved from Merchant forwarding to Customer {customer_state.user_id}"
+                )
+        del receieved_data["USERID"]
+
+
+# endregion
+
+
 @app.post("/handleinput")
 async def handle_input(action_number: int = Form(...)):
-    # send auth request to broker
+    # send auth request to merchant
     if action_number == 1:
-        pass
-    # send auth request to merchant
-    elif action_number == 2:
-        pass
-    # send auth request to merchant
-    elif action_number == 3:
         auth_merchant()
         return {"message": "Sending auth request to merchant"}
+
+    elif action_number == 2:
+        BROKER_CUSTOMER1_DHKE()
+        return {"message": "Sending request to Customer1"}
+    # view products
+    elif action_number == 3:
+        BROKER_MERCHANT_DHKE()
+        return {"message": "Sending request to merchant"}
+    elif action_number == 4:
+        BROKER_CUSTOMER2_DHKE()
+        return {"message": "Sending request to Customer2"}
 
     # buy product
 
@@ -338,7 +544,7 @@ async def message_merchant_broker(data: Request):
         )
         customer_payload["HASH"] = customer_hash.decode("latin1")
         enc_payload = enc_dec.encrypt_payload(customer_payload, valid_customer)
-        send_message(valid_customer, enc_payload, auth=False)
+        send_message(valid_customer, enc_payload, KEYED_MSG)
 
     elif "TO_CUSTOMER" == msg_type:
         # get the payload, append his message to customer and send it
@@ -354,7 +560,7 @@ async def message_merchant_broker(data: Request):
         )
         customer_payload["HASH"] = customer_hash.decode("latin1")
         enc_payload = enc_dec.encrypt_payload(customer_payload, valid_customer)
-        send_message(valid_customer, enc_payload, auth=False)
+        send_message(valid_customer, enc_payload, KEYED_MSG)
     return "MESSAGE SENT TO CUSTOMER"
 
 

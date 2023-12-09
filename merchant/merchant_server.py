@@ -9,6 +9,7 @@ from datetime import datetime
 import json
 import httpx
 import enc_dec
+from DH import DiffieHellman
 
 # broker_public_key = "../bro_pub.pem"
 # merchant_private_key = "../mer_pri.pem"
@@ -19,6 +20,7 @@ broker_public_key = "../OLD KEYS/broker_public_key.pem"
 merchant_public_key = "../OLD KEYS/merchant_public_key.pem"
 merchant_private_key = "../OLD KEYS/merchant_private_key.pem"
 stars = "*" * 10
+Merchant = DiffieHellman()
 
 
 class CustomerInput(BaseModel):
@@ -37,6 +39,13 @@ class BrokerState:
         self.iv = b"6042302273"
         self.session_key = b"7289135233"
         self.request_id = "129311"
+        (
+            self.dh_private_key,
+            self.dh_public_key,
+            self.dh_prime,
+        ) = Merchant.generate_keypair(10000000007)
+        self.DHKE_api = f"{self.host}/DHKE_Merchant_broker"
+        self.dh_session_key = None
 
 
 class CustomerState:
@@ -47,6 +56,12 @@ class CustomerState:
         # assume DH is done
         self.iv = b"6042302272"
         self.session_key = b"7289135232"
+        (
+            self.dh_private_key,
+            self.dh_public_key,
+            self.dh_prime,
+        ) = Merchant.generate_keypair(10000000061)
+        self.dh_session_key = None
 
 
 # Create an instance of the FastAPI class
@@ -137,19 +152,112 @@ def Send_Msg_MB(broker_dec_msg):
 async def handle_input(action_number: int = Form(...)):
     print(f"Sending request to broker {action_number}")
 
-    # send auth request to broker
+    # Add products
     if action_number == 1:
         pass
-    # send auth request to merchant
-    elif action_number == 2:
-        return {"message": "Sending request to merchant"}
-    # view products
-    elif action_number == 3:
-        pass
 
-    # buy product
-    elif action_number == 4:
-        pass
+
+# region dh api
+def DHKE_broker(encrypted_data):
+    async def send_request():
+        async with httpx.AsyncClient() as client:
+            response = await client.post(broker_state.DHKE_api, content=encrypted_data)
+
+            print("Response Status Code:", response.status_code)
+            print("Response Content:", response.text)
+
+            if response.status_code == 200:
+                return {"message": "JSON request sent successfully"}
+            else:
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail="Failed to send JSON request",
+                )
+
+    asyncio.create_task(send_request())
+
+
+@app.post("/DHKE_merchant")
+async def DHKE_merchant(data: Request):
+    # use keyed hash
+    received_data = await data.body()
+    received_data = received_data.decode("utf-8")
+    received_data = json.loads(received_data)
+    if "DHKE" == received_data["TYPE"]:
+        public_key_BM = received_data["DH_PUBLIC_KEY"]
+        print("Diffe_hellman : public key of Broker recieved")
+        print("received payload:", received_data)
+        broker_state.dh_session_key = Merchant.calculate_shared_secret(
+            public_key_BM, broker_state.dh_private_key, broker_state.dh_prime
+        )
+        print(f"Merchant - Broker DH session key {broker_state.dh_session_key}")
+        Merchant_Broker_DHKE()
+
+    elif "DHKE WITH MERCHANT" == received_data["TYPE"]:
+        RID = received_data["RID"]
+        customer_state = customers[RID]
+        public_key_CM = received_data["DH_PUBLIC_KEY"]
+        print("Diffe_hellman : public key of customer1 recieved:")
+        customer_state.dh_session_key = Merchant.calculate_shared_secret(
+            public_key_CM, customer_state.dh_private_key, customer_state.dh_prime
+        )
+        print(
+            f"Merchant - Customer {RID} DH session key {customer_state.dh_session_key}"
+        )
+        Merchant_Customer_DHKE(customer_state)
+
+
+# endregion
+
+
+# region dh key gen
+
+
+def Merchant_Broker_DHKE():
+    timestamp = str(datetime.now())
+    payload = {
+        "TYPE": "DHKE",
+        "DH_PUBLIC_KEY": broker_state.dh_public_key,
+        "TS": timestamp,
+    }
+
+    payload = json.dumps(payload)
+    print("Message Sent : ", payload)
+    print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+    DHKE_broker(payload)
+
+
+def Merchant_Customer_DHKE(customer_state: CustomerState):
+    timestamp = str(datetime.now())
+    payload = {
+        "TYPE": "DHKE WITH Customer",
+        "USERID": customer_state.random_id,
+        "DH_PUBLIC_KEY": customer_state.dh_public_key,
+        "TS": timestamp,
+    }
+
+    payload = json.dumps(payload)
+    print("Message Sent : ", payload)
+    print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+    DHKE_broker(payload)
+
+
+# def Merchant_Customer2_DHKE():
+#     timestamp = str(datetime.now())
+#     payload = {
+#         "TYPE": "DHKE WITH Customer",
+#         "RID": CustomerRID2,
+#         "DH_PUBLIC_KEY": public_key_MC2,
+#         "TS": timestamp,
+#     }
+
+#     payload = json.dumps(payload)
+#     print("Message Sent : ", payload)
+#     print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+#     DHKE_broker(payload)
+
+
+# endregion
 
 
 def get_enc_payload_to_customer(customer_payload, broker_payload, customer_state):

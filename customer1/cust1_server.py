@@ -10,6 +10,7 @@ import json
 import httpx
 import enc_dec
 import time
+from DH import DiffieHellman
 
 # broker_public_key = "../bro_pub.pem"
 # customer1_private_key = "../cus1_pri.pem"
@@ -24,8 +25,10 @@ customer1_private_key = "../OLD KEYS/customer1_private_key.pem"
 BROKER_API = f"http://127.0.0.1:8002"
 BROKER_AUTH_API = f"{BROKER_API}/auth_broker"
 BROKER_MSG_API = f"{BROKER_API}/message_customer_1_broker"
-
+BROKER_DHKEC1_API = f"{BROKER_API}/DHKE_Customer1_broker"
 # as we don't have access to the DH keys before authentication, we will use this key for generating hash
+
+Customer1 = DiffieHellman()
 
 
 class CustomerInput(BaseModel):
@@ -41,6 +44,12 @@ class BrokerState:
         self.iv = b"4832500747"
         self.session_key = b"4103583911"
         self.request_id = "10129120"
+        (
+            self.dh_private_key,
+            self.dh_public_key,
+            self.dh_prime,
+        ) = Customer1.generate_keypair(10000000019)
+        self.dh_shared_key = None
 
 
 class MerchantState:
@@ -50,12 +59,17 @@ class MerchantState:
         self.iv = b"6042302272"
         self.session_key = b"7289135232"
         self.request_id = "129129"
+        (
+            self.dh_private_key,
+            self.dh_public_key,
+            self.dh_prime,
+        ) = Customer1.generate_keypair(10000000061)
+        self.dh_shared_key = None
 
 
 global_userid = "C1"
 global_password = ""
 
-# region broker messages
 
 # Create an instance of the FastAPI class
 app = FastAPI()
@@ -105,6 +119,93 @@ def message_broker(encrypted_data):
 
     asyncio.create_task(send_message())
 
+
+# region DH apis
+
+
+def DHKE_Customer1_broker(encrypted_data):
+    # use keyed hash for sending messages after encryption
+    async def send_message():
+        async with httpx.AsyncClient() as client:
+            response = await client.post(BROKER_DHKEC1_API, content=encrypted_data)
+
+            print("Response Status Code:", response.status_code)
+            print("Response Content:", response.text)
+
+            if response.status_code == 200:
+                return {"message": "JSON request sent successfully"}
+            else:
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail="Failed to send JSON request",
+                )
+
+    asyncio.create_task(send_message())
+
+
+@app.post("/DHKE_customer_1")
+async def DHKE_customer_1(data: Request):
+    # use keyed hash
+    receieved_data = await data.body()
+    print("PAYLOAD1:", receieved_data)
+    receieved_data = receieved_data.decode("utf-8")
+    print("PAYLOAD2:", receieved_data)
+    receieved_data = json.loads(receieved_data)
+    print(receieved_data)
+
+    if "DHKE" == receieved_data["TYPE"]:
+        public_key_BC1 = receieved_data["DH_PUBLIC_KEY"]
+        print("Diffe_hellman : public key of broker recieved")
+        broker_state.dh_shared_key = Customer1.calculate_shared_secret(
+            public_key_BC1, broker_state.dh_private_key, broker_state.dh_prime
+        )
+        print(f"Customer 1 - Broker DH session key {broker_state.dh_shared_key}")
+        Customer_Broker_DHKE()
+
+    elif "DHKE WITH Customer" == receieved_data["TYPE"]:
+        public_key_MC1 = receieved_data["DH_PUBLIC_KEY"]
+        print("Diffe_hellman : public key of merchant recieved")
+        merchant_state.dh_shared_key = Customer1.calculate_shared_secret(
+            public_key_MC1, merchant_state.dh_private_key, merchant_state.dh_prime
+        )
+        print(f"Customer 1 - Merchant DH session key {merchant_state.dh_shared_key}")
+
+
+# end region
+
+
+# region DH gen
+
+
+def Customer_Broker_DHKE():
+    timestamp = str(datetime.now())
+    payload = {
+        "TYPE": "DHKE",
+        "DH_PUBLIC_KEY": broker_state.dh_public_key,
+        "TS": timestamp,
+    }
+
+    payload = json.dumps(payload)
+    print("Message Sent : ", payload)
+    print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+    DHKE_Customer1_broker(payload)
+
+
+def Customer_Merchant_DHKE():
+    timestamp = str(datetime.now())
+    payload = {
+        "TYPE": "DHKE WITH MERCHANT",
+        "DH_PUBLIC_KEY": merchant_state.dh_public_key,
+        "TS": timestamp,
+    }
+
+    payload = json.dumps(payload)
+    print("Message Sent : ", payload)
+    print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+    DHKE_Customer1_broker(payload)
+
+
+# endregion
 
 """
 keyed hash 
@@ -264,6 +365,9 @@ async def handle_input(action_number: int = Form(...)):
     # buy product
     elif action_number == 4:
         pass
+    elif action_number == 5:
+        Customer_Merchant_DHKE()
+        return {"message": "Sending request to merchant"}
 
 
 @app.post("/auth_customer_1")
