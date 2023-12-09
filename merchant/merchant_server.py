@@ -185,7 +185,6 @@ def handle_message(payload, rid):
                 print(f"{return_msg}")
                 return return_msg
             message_broker(encrypt_broker_payload)
-            return "VALID"
 
     elif msg_type == "VIEW_PRODUCTS":
         customer_payload = {
@@ -205,13 +204,15 @@ def handle_message(payload, rid):
             "PAYLOAD": "",
         }
         # handle rid
-        cust = customers[rid]
-        print(f"Customer {cust.iv}, {cust.session_key}")
-        enc_payload = get_enc_payload_to_customer(
-            customer_payload, broker_payload, cust
-        )
-        message_broker(enc_payload)
-        return "VALID"
+        cust = customers.get(rid)
+        if cust is None:
+            print("MERCHANT: PLEASE AUTH BEFORE YOU VIEW PRODUCTS")
+        else:
+            print(f"Customer {cust.iv}, {cust.session_key}")
+            enc_payload = get_enc_payload_to_customer(
+                customer_payload, broker_payload, cust
+            )
+            message_broker(enc_payload)
 
     elif msg_type == "BUY_PRODUCTS":
         pass
@@ -228,10 +229,13 @@ def take_action_for_customer(payload, rid, enc_type):
         return handle_message(decrypted_customer_msg_json, rid)
 
     elif enc_type == "keyedhash":
-        customer = customers[rid]
-        decrypted_customer_msg_json = enc_dec.decrypt_data(enc_payload, customer)
-        print(f"Customer data decrypted {decrypted_customer_msg_json}")
-        return handle_message(decrypted_customer_msg_json, rid)
+        customer = customers.get(rid)
+        if customer is None:
+            print("MERCHANT: AUTH FIRST")
+        else:
+            decrypted_customer_msg_json = enc_dec.decrypt_data(enc_payload, customer)
+            print(f"Customer data decrypted {decrypted_customer_msg_json}")
+            return handle_message(decrypted_customer_msg_json, rid)
 
 
 # use keyed hash
