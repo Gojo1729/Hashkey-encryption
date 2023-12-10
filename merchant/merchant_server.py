@@ -10,6 +10,7 @@ import json
 import httpx
 import enc_dec
 from DH import DiffieHellman
+from typing import Dict
 
 # broker_public_key = "../bro_pub.pem"
 # merchant_private_key = "../mer_pri.pem"
@@ -77,7 +78,7 @@ class CustomerState:
 app = FastAPI()
 broker_state = BrokerState()
 # rid, customer state mapping
-customers: dict[str, CustomerState] = {}
+customers: Dict[str, CustomerState] = {}
 templates = Jinja2Templates(directory="templates")
 
 
@@ -342,7 +343,7 @@ def handle_message(customer_payload, rid):
             "PAYLOAD": "",
         }
         # handle rid
-        cust = customers.get(rid)
+        cust: CustomerState = customers.get(rid)
         if cust is None:
             print("MERCHANT: PLEASE AUTH BEFORE YOU VIEW PRODUCTS")
         else:
