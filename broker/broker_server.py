@@ -350,7 +350,7 @@ async def DHKE_Customer1_broker(data: Request):
         "DHKE WITH MERCHANT" == receieved_data["TYPE"]
     ):  # THIS IS WHEN CUSTOMER1 WANTS TO SEND HIS KEY TO MERCHANT
         print("Diffe_hellman : Recieved from Customer forwarding to Merchant")
-        receieved_data["RID"] = customer_1_state.random_id
+        receieved_data["USERID"] = customer_1_state.random_id
         payload = json.dumps(receieved_data)
         print("Message Sent : ", payload)
         print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
@@ -379,7 +379,7 @@ async def DHKE_Customer2_broker(data: Request):
         "DHKE WITH MERCHANT" == receieved_data["TYPE"]
     ):  # THIS IS WHEN CUSTOMER1 WANTS TO SEND HIS KEY TO MERCHANT
         print("Diffe_hellman : Recieved from Customer forwarding to Merchant")
-        receieved_data["RID"] = customer_2_state.random_id
+        receieved_data["USERID"] = customer_2_state.random_id
         payload = json.dumps(receieved_data)
         print("Message Sent : ", payload)
         print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
