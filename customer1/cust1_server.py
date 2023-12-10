@@ -100,6 +100,7 @@ def auth_broker(encrypted_data):
     asyncio.create_task(send_request())
 
 
+# to send a message to broker
 def message_broker(encrypted_data):
     # use keyed hash for sending messages after encryption
     async def send_message():
@@ -143,32 +144,38 @@ def DHKE_Customer1_broker(encrypted_data):
     asyncio.create_task(send_message())
 
 
+# for receiving DHKE request from broker
 @app.post("/DHKE_customer_1")
 async def DHKE_customer_1(data: Request):
-    # use keyed hash
-    receieved_data = await data.body()
-    print("PAYLOAD1:", receieved_data)
-    receieved_data = receieved_data.decode("utf-8")
-    print("PAYLOAD2:", receieved_data)
-    receieved_data = json.loads(receieved_data)
-    print(receieved_data)
+    if broker_state.auth_done:
+        # use keyed hash
+        receieved_data = await data.body()
+        print("PAYLOAD1:", receieved_data)
+        receieved_data = receieved_data.decode("utf-8")
+        print("PAYLOAD2:", receieved_data)
+        receieved_data = json.loads(receieved_data)
+        print(receieved_data)
 
-    if "DHKE" == receieved_data["TYPE"]:
-        public_key_BC1 = receieved_data["DH_PUBLIC_KEY"]
-        print("Diffe_hellman : public key of broker recieved")
-        broker_state.dh_shared_key = Customer1.calculate_shared_secret(
-            public_key_BC1, broker_state.dh_private_key, broker_state.dh_prime
-        )
-        print(f"Customer 1 - Broker DH session key {broker_state.dh_shared_key}")
-        Customer_Broker_DHKE()
+        if "DHKE" == receieved_data["TYPE"]:
+            public_key_BC1 = receieved_data["DH_PUBLIC_KEY"]
+            print("Diffe_hellman : public key of broker recieved")
+            broker_state.dh_shared_key = Customer1.calculate_shared_secret(
+                public_key_BC1, broker_state.dh_private_key, broker_state.dh_prime
+            )
+            print(f"Customer 1 - Broker DH session key {broker_state.dh_shared_key}")
+            Customer_Broker_DHKE()
 
-    elif "DHKE WITH Customer" == receieved_data["TYPE"]:
-        public_key_MC1 = receieved_data["DH_PUBLIC_KEY"]
-        print("Diffe_hellman : public key of merchant recieved")
-        merchant_state.dh_shared_key = Customer1.calculate_shared_secret(
-            public_key_MC1, merchant_state.dh_private_key, merchant_state.dh_prime
-        )
-        print(f"Customer 1 - Merchant DH session key {merchant_state.dh_shared_key}")
+        elif "DHKE WITH Customer" == receieved_data["TYPE"]:
+            public_key_MC1 = receieved_data["DH_PUBLIC_KEY"]
+            print("Diffe_hellman : public key of merchant recieved")
+            merchant_state.dh_shared_key = Customer1.calculate_shared_secret(
+                public_key_MC1, merchant_state.dh_private_key, merchant_state.dh_prime
+            )
+            print(
+                f"Customer 1 - Merchant DH session key {merchant_state.dh_shared_key}"
+            )
+    else:
+        return {"message": "CUSTOMER1: You are not authorized, please authorize first"}
 
 
 # end region
@@ -390,6 +397,7 @@ async def handle_input(action_number: int = Form(...)):
             return {"message": "Broker or Merchant not authorized"}
 
 
+# authorizing request from broker
 @app.post("/auth_customer_1")
 async def auth_customer_1(data: Request):
     receieved_data = await data.json()
@@ -413,7 +421,6 @@ async def auth_customer_1(data: Request):
                 print("Mutual authentication with broker successfull")
                 broker_state.auth_done = True
                 print(f"broker request id {Decrypted_MESS.get('REQUEST_ID')}")
-                # return templates.TemplateResponse("index.html", {"request": data})
                 return Decrypted_MESS.get("REQUEST_ID")
             else:
                 broker_state.auth_done = False
@@ -426,8 +433,8 @@ async def message_customer_1(data: Request):
     receieved_data = await data.body()
     # print("Encrypted payload :", receieved_data)
     broker_msg_decrypted = enc_dec.decrypt_data(receieved_data, broker_state)
-    hash_validated = enc_dec.validate_hash(broker_msg_decrypted, broker_state)
-    print(f"Hash of message from broker validated {hash_validated}")
+    is_hash_validated = enc_dec.validate_hash(broker_msg_decrypted, broker_state)
+    print(f"Hash of message from broker validated {is_hash_validated}")
 
     if "MERCHANT_AUTHENTICATION" == broker_msg_decrypted["TYPE"]:
         print(f"Payload received from broker {broker_msg_decrypted}")
@@ -444,9 +451,11 @@ async def message_customer_1(data: Request):
         print(f"Payload received from merchant {merchant_payload}")
         merchant_msg_decrypted = enc_dec.decrypt_data(merchant_payload, merchant_state)
 
-        hash_validated = enc_dec.validate_hash(merchant_msg_decrypted, merchant_state)
+        is_hash_validated = enc_dec.validate_hash(
+            merchant_msg_decrypted, merchant_state
+        )
         print(
-            f"Merchant data decrypted {merchant_msg_decrypted['PRODUCTS']}, merchant hash validated -> {hash_validated}"
+            f"Merchant data decrypted {merchant_msg_decrypted['PRODUCTS']}, merchant hash validated -> {is_hash_validated}"
         )
 
     elif "FROM_BROKER" == broker_msg_decrypted["TYPE"]:
