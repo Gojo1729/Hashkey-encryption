@@ -427,18 +427,30 @@ async def handle_input(action_number: int = Form(...)):
         auth_merchant()
         return {"message": "Sending auth request to merchant"}
 
+    # sending DH keys to customer1
     elif action_number == 2:
-        BROKER_CUSTOMER1_DHKE()
-        return {"message": "Sending request to Customer1"}
-    # view products
-    elif action_number == 3:
-        BROKER_MERCHANT_DHKE()
-        return {"message": "Sending request to merchant"}
-    elif action_number == 4:
-        BROKER_CUSTOMER2_DHKE()
-        return {"message": "Sending request to Customer2"}
+        if customer_1_state.auth_done:
+            BROKER_CUSTOMER1_DHKE()
+            return {"message": "Sending DH keys to Customer1"}
+        else:
+            return {
+                "message": "Customer1 not authorized yet, please authorize and then send DH keys"
+            }
 
-    # buy product
+    # sending DH keys to customer2
+    elif action_number == 3:
+        if customer_2_state.auth_done:
+            BROKER_CUSTOMER2_DHKE()
+            return {"message": "Sending request to Customer2"}
+        else:
+            return {
+                "message": "Customer2 not authorized yet, please authorize and then send DH keys"
+            }
+    # sending DH keys to merchant
+    elif action_number == 4:
+        if merchant_state.auth_done:
+            BROKER_MERCHANT_DHKE()
+            return {"message": "Sending DH key to merchant"}
 
 
 # used by other stakeholders to authenticate mutually with broker
@@ -496,16 +508,6 @@ def get_valid_customer(id, from_entity):
                 valid_customer = customer
 
     return valid_customer
-
-
-# def get_enc_payload_to_customer(merchant_payload, customer_payload, customer_state):
-#     merchant_enc_payload, merchant_hash = enc_dec.encrypt_data(
-#         merchant_payload, customer_state
-#     )
-#     customer_payload["PAYLOAD"] = merchant_enc_payload.decode("latin1")
-#     broker_enc_payload, broker_hash = enc_dec.encrypt_data(customer_payload, broker_state)
-
-#     return broker_enc_payload
 
 
 # receving msg from merchant

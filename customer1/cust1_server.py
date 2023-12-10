@@ -339,6 +339,14 @@ async def auth_payload_to_merchant():
 # endregion
 
 
+def isBrokerAuthorized():
+    return broker_state.auth_done
+
+
+def isMerchantAuthorized():
+    return merchant_state.auth_done
+
+
 # region APIs
 @app.post("/handleinput")
 async def handle_input(action_number: int = Form(...)):
@@ -353,21 +361,33 @@ async def handle_input(action_number: int = Form(...)):
 
     # send auth request to merchant through broker
     elif action_number == 2:
-        await auth_payload_to_merchant()
-        return {"message": "AUTH_REQUEST_BROKER"}
+        if isBrokerAuthorized():
+            await auth_payload_to_merchant()
+            return {"message": "AUTH_REQUEST_MERCHANT"}
+        else:
+            return {"message": "BROKER_NOT_AUTHORIZED to send auth request to merchant"}
+
+    # sending dh key request to merchant
+    elif action_number == 3:
+        if isBrokerAuthorized() and isMerchantAuthorized():
+            Customer_Merchant_DHKE()
+            return {"message": "Sending DH key request to merchant"}
 
     # view products
-    elif action_number == 3:
-        print(f"sending view prod request to merchant through broker")
-        send_message("VIEW_PRODUCTS")
-        return {"message": "MESSAGE_MERCHANT"}
-
-    # buy product
     elif action_number == 4:
-        pass
+        if isBrokerAuthorized() and isMerchantAuthorized():
+            print(f"sending view prod request to merchant through broker")
+            send_message("VIEW_PRODUCTS")
+            return {"message": "MESSAGE_MERCHANT"}
+        else:
+            return {"message": "Broker or Merchant not authorized"}
+
+    # buy product from merchant
     elif action_number == 5:
-        Customer_Merchant_DHKE()
-        return {"message": "Sending request to merchant"}
+        if isBrokerAuthorized() and isMerchantAuthorized():
+            pass
+        else:
+            return {"message": "Broker or Merchant not authorized"}
 
 
 @app.post("/auth_customer_1")
