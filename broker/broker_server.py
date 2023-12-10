@@ -145,14 +145,14 @@ def send_message(state, encrypted_data, message_type):
                             print(
                                 f"Mutual authentication with {state.user_id} successfull"
                             )
-                            state.auth = True
+                            state.auth_done = True
                         else:
                             print(
                                 f"Mutual authentication with {state.user_id} {response.text} un-successfull"
                             )
-                            state.auth = False
+                            state.auth_done = False
                     else:
-                        state.auth = False
+                        state.auth_done = False
                 elif state.entity == "Merchant":
                     if response.status_code == 200:
                         print(
@@ -563,6 +563,17 @@ async def message_merchant_broker(data: Request):
         customer_payload["HASH"] = customer_hash.decode("latin1")
         enc_payload = enc_dec.encrypt_payload(customer_payload, valid_customer)
         send_message(valid_customer, enc_payload, KEYED_MSG)
+    elif "PURCHASE_CONSENT" == msg_type:
+        # get the payload, append his message to customer and send it
+        customer_payload = {
+            "TYPE": "PURCHASE_CONSENT",
+            "ENTITY": "BROKER",
+            "HASH": "",
+            "TIMESTAMP": str(datetime.now()),
+            "PAYLOAD": merchant_msg_decrypted["PAYLOAD"],
+        }
+        enc_payload = enc_dec.encrypt_payload(customer_payload, valid_customer)
+        send_message(valid_customer, enc_payload, KEYED_MSG)
     return "MESSAGE SENT TO CUSTOMER"
 
 
@@ -593,6 +604,34 @@ async def message_customer_1_broker(data: Request):
         """
         customer_msg_decrypted["TYPE"] = "FROM_CUSTOMER"
         customer_to_merchant(customer_msg_decrypted)
+    elif "PAYMENT_CONSENT" == msg_type:
+        # get the payload, append his message to customer and send it
+        broker_to_merchant(customer_msg_decrypted)
+
+
+def broker_to_merchant(customer_decrypted_message):
+    random_customer_id: str = customers_state[
+        customer_decrypted_message["USERID"]
+    ].random_id
+    customer_decrypted_message["USERID"] = random_customer_id
+    customer_decrypted_message["TYPE"] = "PAYMENT_DONE"
+    customer_decrypted_message["ENTITY"] = "Broker"
+    customer_decrypted_message["HASH"] = ""
+    customer_decrypted_message["MESSAGE"] = "Payment Done --  Funds Transferred"
+    customer_decrypted_message["TIMESTAMP"] = str(datetime.now())
+    payload = json.dumps(customer_decrypted_message)
+    print(
+        f"payload to merchant {customer_decrypted_message}, type {type(customer_decrypted_message)}"
+    )
+    merchant_payload_hash = enc_dec.enc.keyed_hash(
+        json.dumps(customer_decrypted_message).encode("latin1"), merchant_state
+    )
+    customer_decrypted_message["HASH"] = merchant_payload_hash.decode("latin1")
+    encrypted_payload_to_merchant = enc_dec.encrypt_payload(payload, merchant_state)
+    print(
+        f"Encrypted message sent to merchant {encrypted_payload_to_merchant} \n \n *** Hash is {merchant_payload_hash}"
+    )
+    send_message(merchant_state, encrypted_payload_to_merchant, KEYED_MSG)
 
 
 # receiving msg from customer1

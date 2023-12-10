@@ -62,6 +62,15 @@ class CustomerState:
             self.dh_prime,
         ) = Merchant.generate_keypair(10000000061)
         self.dh_session_key = None
+        self.prods = {}
+        self.Inventory = {
+            1: {"PID": 1, "Quantity": 5, "Name": "Watch", "Access_Code": 1616315},
+            2: {"PID": 2, "Quantity": 4, "Name": "IPAD", "Access_Code": 6516516},
+            3: {"PID": 3, "Quantity": 4, "Name": "MAC", "Access_Code": 1616315},
+            4: {"PID": 4, "Quantity": 2, "Name": "AIRTAG", "Access_Code": 1616315},
+            5: {"PID": 5, "Quantity": 1, "Name": "AIRPODS", "Access_Code": 1616315},
+            6: {"PID": 6, "Quantity": 0, "Name": "Apple TV", "Access_Code": 1616315},
+        }
 
 
 # Create an instance of the FastAPI class
@@ -194,7 +203,7 @@ async def DHKE_merchant(data: Request):
         Merchant_Broker_DHKE()
 
     elif "DHKE WITH MERCHANT" == received_data["TYPE"]:
-        RID = received_data["RID"]
+        RID = received_data["USERID"]
         customer_state = customers[RID]
         public_key_CM = received_data["DH_PUBLIC_KEY"]
         print("Diffe_hellman : public key of customer1 recieved:")
@@ -318,8 +327,9 @@ def handle_message(customer_payload, rid):
         customer_payload = {
             "TIMESTAMP": str(datetime.now()),
             "PRODUCTS": {
-                "PROD1": {"PID": 1, "NAME": "WATCH"},
-                "PROD2": {"PID": 1, "NAME": "WATCH"},
+                "PROD1": {"PID": 1, "NAME": "WATCH", "QUANTITY": 5},
+                "PROD2": {"PID": 2, "NAME": "MAC", "QUANTITY": 5},
+                "PROD2": {"PID": 3, "NAME": "IPAD", "QUANTITY": 5},
             },
             "HASH": "",
         }
@@ -343,7 +353,109 @@ def handle_message(customer_payload, rid):
             message_broker(enc_payload)
 
     elif msg_type == "BUY_PRODUCTS":
-        pass
+        Products = customer_payload["PRODUCTS"]
+        cust: CustomerState = customers.get(rid)
+        prods = cust.prods = {}
+        Not_Available = {}
+        for i in Products:
+            for k in cust.Inventory.values():
+                if int(i) == k["PID"]:
+                    if int(Products[i]) <= k["Quantity"]:
+                        prods["PRODUCT" + i] = {
+                            "PID": int(i),
+                            "Name": k["Name"],
+                            "Quantity": k["Quantity"],
+                        }
+                    else:
+                        prods["PRODUCT" + i] = {
+                            "PID": int(i),
+                            "Name": k["Name"],
+                            "Quantity": k["Quantity"],
+                        }
+                        Not_Available[k["PID"]] = k["Quantity"]
+        if Not_Available != {}:
+            p = "All Items are not available, Product available"
+            customer_payload = {
+                "TIMESTAMP": str(datetime.now()),
+                "MESSAGE": p,
+                "PRODUCTS": prods,
+                "HASH": "",
+            }
+            broker_payload = {
+                "TYPE": "TO_CUSTOMER",
+                "ENTITY": "Merchant",
+                "USERID": f"{rid}",
+                "TIMESTAMP": str(datetime.now()),
+                "HASH": "",
+                "PAYLOAD": "",
+            }
+            cust.prods = {}
+            cust = customers.get(rid)
+            if cust is None:
+                print("MERCHANT: PLEASE AUTH BEFORE YOU VIEW PRODUCTS")
+            else:
+                print(f"Customer {cust.iv}, {cust.session_key}")
+                enc_payload = get_enc_payload_to_customer(
+                    customer_payload, broker_payload, cust
+                )
+                message_broker(enc_payload)
+        else:
+            customer_payload = {
+                "TIMESTAMP": str(datetime.now()),
+                "PRODUCTS": prods,
+                "HASH": "",
+            }
+            broker_payload = {
+                "TYPE": "PURCHASE_CONSENT",
+                "ENTITY": "Merchant",
+                "USERID": f"{rid}",
+                "TIMESTAMP": str(datetime.now()),
+                "HASH": "",
+                "PAYLOAD": "",
+            }
+            cust = customers.get(rid)
+            if cust is None:
+                print("MERCHANT: PLEASE AUTH BEFORE YOU VIEW PRODUCTS")
+            else:
+                print(f"Customer {cust.iv}, {cust.session_key}")
+                enc_payload = get_enc_payload_to_customer(
+                    customer_payload, broker_payload, cust
+                )
+                message_broker(enc_payload)
+    elif msg_type == "Payment--Done":
+        cust = customers.get(rid)
+        prods = cust.prods
+        PRODUCTS = {}
+        for j, i in zip(prods.keys(), prods.values()):
+            PRODUCTS[j] = {
+                "PID": i["PID"],
+                "Name": i["Name"],
+                "State": "Purchased",
+                "ACCESS_CODE": 612612651,
+            }
+        broker_payload = {
+            "TYPE": "TO_CUSTOMER",
+            "ENTITY": "Merchant",
+            "USERID": f"{rid}",
+            "TIMESTAMP": str(datetime.now()),
+            "HASH": "",
+            "PAYLOAD": "",
+        }
+        customer_payload = {
+            "TIMESTAMP": str(datetime.now()),
+            "PRODUCTS": PRODUCTS,
+            "HASH": "",
+        }
+        # handle rid
+        cust = customers.get(rid)
+        if cust is None:
+            print("MERCHANT: PLEASE AUTH BEFORE YOU VIEW PRODUCTS")
+        else:
+            print(f"Customer {cust.iv}, {cust.session_key}")
+            enc_payload = get_enc_payload_to_customer(
+                customer_payload, broker_payload, cust
+            )
+            message_broker(enc_payload)
 
 
 def take_action_for_customer(payload, rid, enc_type):
@@ -399,6 +511,11 @@ async def message_merchant(data: Request):
         # get the rid, get the customer, decrypt the message
         if True:
             return take_action_for_customer(broker_msg_decrypted, cust_id, "keyedhash")
+    elif "PAYMENT_DONE" == msg_type:
+        # get the rid, get the customer, decrypt the message
+        if True:
+            # update the inventory
+            return handle_message({"TYPE": "Payment--Done"}, cust_id)
 
 
 @app.post("/auth_merchant")
