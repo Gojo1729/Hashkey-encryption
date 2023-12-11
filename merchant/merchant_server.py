@@ -10,7 +10,7 @@ import json
 import httpx
 import enc_dec
 from DH import DiffieHellman
-from typing import Dict
+from typing import Dict, Tuple
 
 # broker_public_key = "../bro_pub.pem"
 # merchant_private_key = "../mer_pri.pem"
@@ -22,6 +22,12 @@ merchant_public_key = "../OLD KEYS/merchant_public_key.pem"
 merchant_private_key = "../OLD KEYS/merchant_private_key.pem"
 stars = "*" * 10
 Merchant = DiffieHellman()
+AUTH_MSG = "auth"
+DHKE_MSG = "dhke"
+KEYED_MSG = "kh"
+MSG_KEY = "MSG"
+HASH_KEY = "HASH"
+ENCODING_TYPE = "latin1"
 
 
 class CustomerInput(BaseModel):
@@ -88,6 +94,19 @@ async def read_root(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
 
+def unpack_message(json_message: dict) -> Tuple[bytes, bytes]:
+    enc_message = json_message[MSG_KEY].encode(ENCODING_TYPE)
+    message_hash = json_message[HASH_KEY].encode(ENCODING_TYPE)
+    return enc_message, message_hash
+
+
+def pack_message(enc_bytes: bytes, message_hash: bytes) -> Dict[str, str]:
+    return {
+        MSG_KEY: enc_bytes.decode(ENCODING_TYPE),
+        HASH_KEY: message_hash.decode(ENCODING_TYPE),
+    }
+
+
 def auth_broker(encrypted_data):
     async def send_request():
         async with httpx.AsyncClient() as client:
@@ -115,7 +134,7 @@ def auth_broker(encrypted_data):
 def message_broker(encrypted_data):
     async def send_request():
         async with httpx.AsyncClient() as client:
-            response = await client.post(broker_state.msg_api, content=encrypted_data)
+            response = await client.post(broker_state.msg_api, json=encrypted_data)
 
             print("Response Status Code:", response.status_code)
             print("Response Content:", response.text)
@@ -276,20 +295,20 @@ def get_enc_payload_to_customer(customer_payload, broker_payload, customer_state
     customer_payload_hash = enc_dec.enc.keyed_hash(
         json.dumps(customer_payload).encode("latin1"), customer_state
     )
-    customer_payload["HASH"] = customer_payload_hash.decode("latin1")
     customer_enc_payload = enc_dec.encrypt_payload(
         customer_payload,
         customer_state,
     )
+    customer_packed_messagee = pack_message(customer_enc_payload, customer_payload_hash)
 
-    print(f"Customer enc payload {customer_enc_payload}")
-    broker_payload["PAYLOAD"] = customer_enc_payload.decode("latin1")
+    print(f"Customer enc payload {customer_packed_messagee}")
+    broker_payload["PAYLOAD"] = customer_packed_messagee
     broker_hash = enc_dec.enc.keyed_hash(
         json.dumps(broker_payload).encode("latin1"), broker_state
     )
-    broker_payload["HASH"] = broker_hash.decode("latin1")
     broker_enc_payload = enc_dec.encrypt_payload(broker_payload, broker_state)
-    return broker_enc_payload
+    broker_packed_message = pack_message(broker_enc_payload, broker_hash)
+    return broker_packed_message
 
 
 def handle_message(customer_payload, rid):
@@ -307,22 +326,22 @@ def handle_message(customer_payload, rid):
                     "ENTITY": "Merchant",
                     "RESPONSE_ID": customer_payload.get("REQUEST_ID"),
                 },
-                "HASH": "",
             }
             broker_hash = enc_dec.enc.keyed_hash(
                 json.dumps(broker_payload).encode("latin1"), broker_state
             )
-            broker_payload["HASH"] = broker_hash.decode("latin1")
             encrypt_broker_payload = enc_dec.encrypt_payload(
                 broker_payload, broker_state
             )
+            packed_encrypted_message = pack_message(encrypt_broker_payload, broker_hash)
+
             if not False:
                 customers[rid] = CustomerState(rid, "state", True)
             else:
                 return_msg = "INVALID, CUSTOMER ALREADY AUTHENTICATED"
                 print(f"{return_msg}")
                 return return_msg
-            message_broker(encrypt_broker_payload)
+            message_broker(packed_encrypted_message)
 
     elif msg_type == "VIEW_PRODUCTS":
         customer_payload = {
@@ -332,14 +351,12 @@ def handle_message(customer_payload, rid):
                 "PROD2": {"PID": 2, "NAME": "MAC", "QUANTITY": 5},
                 "PROD2": {"PID": 3, "NAME": "IPAD", "QUANTITY": 5},
             },
-            "HASH": "",
         }
         broker_payload = {
             "TYPE": "TO_CUSTOMER",
             "ENTITY": "Merchant",
             "USERID": f"{rid}",
             "TIMESTAMP": str(datetime.now()),
-            "HASH": "",
             "PAYLOAD": "",
         }
         # handle rid
@@ -460,15 +477,17 @@ def handle_message(customer_payload, rid):
 
 
 def take_action_for_customer(payload, rid, enc_type):
-    enc_payload = payload["PAYLOAD"].encode("latin1")
+    enc_payload = payload["PAYLOAD"]
+    encrypted_message, message_hash = unpack_message(enc_payload)
     print(f"Encrypted payload from customer {enc_payload}")
     # decrypt using rsa
     if enc_type == "rsa":
-        is_customer_hash_valid = payload["MERCHANT_HASH"].encode("latin1")
-        decypted_customer_msg = rsa_decrypt_data(enc_payload, merchant_private_key)
+        decypted_customer_msg = rsa_decrypt_data(
+            encrypted_message, merchant_private_key
+        )
         decrypted_customer_msg_json = json.loads(decypted_customer_msg)
         is_hash_validated = enc_dec.validate_rsa_hash(
-            decypted_customer_msg, is_customer_hash_valid
+            decypted_customer_msg, message_hash
         )
         print(
             f"Customer data decrypted {decrypted_customer_msg_json}, {rid=}, {is_hash_validated=}"
@@ -481,10 +500,10 @@ def take_action_for_customer(payload, rid, enc_type):
             print("MERCHANT: AUTH FIRST")
         else:
             decrypted_customer_msg_json = enc_dec.decrypt_data(
-                enc_payload, customer_state
+                encrypted_message, customer_state
             )
             is_customer_hash_valid = enc_dec.validate_hash(
-                decrypted_customer_msg_json, customer_state
+                decrypted_customer_msg_json, message_hash, customer_state
             )
             print(
                 f"Customer data decrypted {decrypted_customer_msg_json}, \n customer hash validated -> {is_customer_hash_valid}"
@@ -495,11 +514,12 @@ def take_action_for_customer(payload, rid, enc_type):
 # recieving message from broker
 @app.post("/message_merchant")
 async def message_merchant(data: Request):
-    receieved_data = await data.body()
-    print(f"Encrypted payload in bytes from broker {receieved_data} \n {stars}")
-    broker_msg_decrypted = enc_dec.decrypt_data(receieved_data, broker_state)
+    receieved_data = await data.json()
+    encrypted_message, message_hash = unpack_message(receieved_data)
+    print(f"Encrypted payload in bytes from broker {encrypted_message} \n {stars}")
+    broker_msg_decrypted = enc_dec.decrypt_data(encrypted_message, broker_state)
     print(f"Decrypted data {broker_msg_decrypted} \n {stars}")
-    msg_hash = enc_dec.validate_hash(broker_msg_decrypted, broker_state)
+    msg_hash = enc_dec.validate_hash(broker_msg_decrypted, message_hash, broker_state)
     print(f"Hash of message from broker validated {msg_hash} \n{stars}")
 
     msg_type = broker_msg_decrypted["TYPE"]
@@ -522,8 +542,7 @@ async def message_merchant(data: Request):
 @app.post("/auth_merchant")
 async def auth_merchant(data: Request):
     received_data = await data.json()
-    encrypted_message = received_data["MSG"].encode("latin1")
-    message_hash = received_data["HASH"].encode("latin1")
+    encrypted_message, message_hash = unpack_message(received_data)
     print(f"original message {received_data}")
     print(f"Encrypted payload : {encrypted_message}\n ---- message hash {message_hash}")
 

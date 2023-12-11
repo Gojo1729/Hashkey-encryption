@@ -11,14 +11,13 @@ def validate_rsa_hash(decrypted_message, provided_hash):
     return calculated_hash == provided_hash
 
 
-def validate_hash(decrypted_message, state):
+def validate_hash(decrypted_message, msg_hash, state):
     Key, _ = state.session_key, state.iv
     # get the hash included in the decrypted message and confirm the hash with the decrypted message
-    decrypted_msg_hash = decrypted_message["HASH"]
-    decrypted_message["HASH"] = ""
+    decrypted_msg_hash = msg_hash
     calculated_hash = enc.hash_256(json.dumps(decrypted_message).encode("latin1") + Key)
     print(f"Calculated hash {calculated_hash}")
-    return calculated_hash == decrypted_msg_hash.encode("latin1")
+    return calculated_hash == decrypted_msg_hash
 
 
 def decrypt_data(encrypted_message, state):
