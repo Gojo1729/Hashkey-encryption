@@ -350,8 +350,8 @@ def Merchant_Customer_DHKE(customer_state: CustomerState):
 
 
 def get_enc_payload_to_customer(customer_payload, broker_payload, customer_state):
-    print(f"{stars}")
-    print("Encrypting customer payload")
+    print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+    logger.info("Encrypting customer payload")
     customer_payload_hash = enc_dec.enc.keyed_hash(
         json.dumps(customer_payload).encode("latin1"), customer_state
     )
@@ -361,7 +361,9 @@ def get_enc_payload_to_customer(customer_payload, broker_payload, customer_state
     )
     customer_packed_messagee = pack_message(customer_enc_payload, customer_payload_hash)
 
-    print(f"Customer enc payload {customer_packed_messagee}")
+    logger.critical(customer_packed_messagee)
+    logger.error(customer_payload_hash)
+    print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
     broker_payload["PAYLOAD"] = customer_packed_messagee
     broker_hash = enc_dec.enc.keyed_hash(
         json.dumps(broker_payload).encode("latin1"), broker_state
@@ -575,9 +577,10 @@ def take_action_for_customer(payload, rid, enc_type):
             is_customer_hash_valid = enc_dec.validate_hash(
                 decrypted_customer_msg_json, message_hash, customer_state
             )
-            logging.info(
+            logger.info(
                 f"Customer data decrypted {decrypted_customer_msg_json}")
             logger.error(f"customer hash validated -> {is_customer_hash_valid}")
+            print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
             return handle_message(decrypted_customer_msg_json, rid)
 
 

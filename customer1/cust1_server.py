@@ -210,6 +210,7 @@ async def DHKE_customer_1(data: Request):
         # use keyed hash
         receieved_data = await data.body()
         print("\n\n")
+        print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
         print("PAYLOAD1:", receieved_data)
         receieved_data = receieved_data.decode("utf-8")
         print("PAYLOAD2:", receieved_data)
@@ -330,13 +331,22 @@ def send_message(action):
         }
 
         enc_payload = get_enc_payload_to_merchant(merchant_payload, broker_payload)
+        print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+        logger.info(f"Encrypted Payload prepared for merchant: ")
+        logger.critical({enc_payload})
+        logger.info(f"Payload Sent to Broker")
+        print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
         message_broker(enc_payload)
     elif action == "BUY_PRODUCTS":
         Items = {}
+        print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
         n = int(input("Enter the number of type of products you want to purchase ?"))
         for _ in range(0, n):
+            print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
             j = int(input("Enter the product ID"))
             Items[j] = input("Enter the Number of items you want to purchase")
+        
+        print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
 
         merchant_payload = {
             "TYPE": action,
@@ -352,6 +362,11 @@ def send_message(action):
             "PAYLOAD": "",
         }
         enc_payload = get_enc_payload_to_merchant(merchant_payload, broker_payload)
+        print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+        logger.info(f"Encrypted Payload prepared for merchant: ")
+        logger.critical(enc_payload)
+        logger.info(f"Payload Sent to Broker")
+        print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
         message_broker(enc_payload)
     elif action == "PAYMENT":
         broker_payload = {
@@ -361,6 +376,11 @@ def send_message(action):
             "TIMESTAMP": str(datetime.now()),
         }
         enc_payload = get_enc_payload_to_broker(broker_payload)
+        print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+        logger.info(f"Encrypted Payload prepared for Broker: ")
+        logger.critical(enc_payload)
+        logger.info(f"Payload Sent to Broker")
+        print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
         message_broker(enc_payload)
 
 
@@ -604,18 +624,22 @@ async def message_customer_1(data: Request):
         merchant_payload = broker_msg_decrypted["PAYLOAD"]
         encrypted_message, message_hash = unpack_message(merchant_payload)
         merchant_msg_decrypted = enc_dec.decrypt_data(encrypted_message, merchant_state)
-        print(pd.DataFrame(merchant_msg_decrypted["PRODUCTS"]))
+        logger.info(pd.DataFrame(merchant_msg_decrypted["PRODUCTS"]))
+        print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++") 
         c = input(
             "Merchant Requested Payment Request of amount ${} for the purchase of the items shown above  Yes/No".format(
                 broker_msg_decrypted["AMOUNT"]
             )
         )
+        print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++") 
         is_hash_validated = enc_dec.validate_hash(
             merchant_msg_decrypted, message_hash, merchant_state
         )
-        print(
-            f"Merchant data decrypted {merchant_msg_decrypted['PRODUCTS']}, merchant hash validated -> {is_hash_validated}"
-        )
+        print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++") 
+        logger.info(
+            f"Merchant data decrypted {merchant_msg_decrypted['PRODUCTS']}") 
+        logger.error(f"merchant hash validated -> {is_hash_validated}")
+        print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++") 
         if c == "Yes":
             send_message("PAYMENT")
         else:

@@ -497,7 +497,7 @@ async def DHKE_Merchant_broker(data: Request):
                 logger.critical(
                     f"Diffe_hellman : Recieved from Merchant forwarded to Customer {customer_state.user_id}"
                 )
-                logging.info(f"Message Sent :  {payload}")
+                logger.info(f"Message Sent :  {payload}")
                 send_message(customer_state, payload, DHKE_MSG)
                 
                 print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
