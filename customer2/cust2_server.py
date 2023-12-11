@@ -4,34 +4,30 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 from Auth_decryption import rsa_decrypt_data
-from Auth_encryption import rsa_encrypt_data
 from datetime import datetime
 import json
 import httpx
 import enc_dec
+from Auth_decryption import rsa_decrypt_data
+from Auth_encryption import rsa_encrypt_data
 import time
 import pandas as pd
 from DH import DiffieHellman
 from typing import Tuple, Dict
 
 
-# broker_public_key = "../bro_pub.pem"
-# customer1_private_key = "../cus1_pri.pem"
-# customer1_public_key = "../cus1_pub.pem"
-# merchant_public_key = "../mer_pub.pem"
-
 broker_public_key = "../OLD KEYS/broker_public_key.pem"
 merchant_public_key = "../OLD KEYS/merchant_public_key.pem"
-customer_1_public_key = "../OLD KEYS/customer1_public_key.pem"
-customer_1_private_key = "../OLD KEYS/customer1_private_key.pem"
+customer_2_public_key = "../OLD KEYS/customer2_public_key.pem"
+customer_2_private_key = "../OLD KEYS/customer2_private_key.pem"
 
 BROKER_API = f"http://127.0.0.1:8002"
 BROKER_AUTH_API = f"{BROKER_API}/auth_broker"
-BROKER_MSG_API = f"{BROKER_API}/message_customer_1_broker"
-BROKER_DHKEC1_API = f"{BROKER_API}/DHKE_Customer1_broker"
+BROKER_MSG_API = f"{BROKER_API}/message_customer_2_broker"
+BROKER_DHKEC1_API = f"{BROKER_API}/DHKE_Customer2_broker"
 # as we don't have access to the DH keys before authentication, we will use this key for generating hash
 
-Customer1 = DiffieHellman()
+customer_2 = DiffieHellman()
 
 
 class CustomerInput(BaseModel):
@@ -51,7 +47,7 @@ class BrokerState:
             self.dh_private_key,
             self.dh_public_key,
             self.dh_prime,
-        ) = Customer1.generate_keypair(10000000019)
+        ) = customer_2.generate_keypair(10000000019)
         self.dh_shared_key = None
 
 
@@ -66,11 +62,11 @@ class MerchantState:
             self.dh_private_key,
             self.dh_public_key,
             self.dh_prime,
-        ) = Customer1.generate_keypair(10000000061)
+        ) = customer_2.generate_keypair(10000000061)
         self.dh_shared_key = None
 
 
-global_userid = "C1"
+global_userid = "C2"
 AUTH_MSG = "auth"
 DHKE_MSG = "dhke"
 KEYED_MSG = "kh"
@@ -144,7 +140,7 @@ def message_broker(encrypted_data):
 # region DH apis
 
 
-def DHKE_Customer1_broker(encrypted_data):
+def DHKE_customer_2_broker(encrypted_data):
     # use keyed hash for sending messages after encryption
     async def send_message():
         async with httpx.AsyncClient() as client:
@@ -165,8 +161,8 @@ def DHKE_Customer1_broker(encrypted_data):
 
 
 # for receiving DHKE request from broker
-@app.post("/DHKE_customer_1")
-async def DHKE_customer_1(data: Request):
+@app.post("/DHKE_customer_2")
+async def DHKE_customer_2(data: Request):
     if broker_state.auth_done:
         # use keyed hash
         receieved_data = await data.body()
@@ -179,7 +175,7 @@ async def DHKE_customer_1(data: Request):
         if "DHKE" == receieved_data["TYPE"]:
             public_key_BC1 = receieved_data["DH_PUBLIC_KEY"]
             print("Diffe_hellman : public key of broker recieved")
-            broker_state.dh_shared_key = Customer1.calculate_shared_secret(
+            broker_state.dh_shared_key = customer_2.calculate_shared_secret(
                 public_key_BC1, broker_state.dh_private_key, broker_state.dh_prime
             )
             print(f"Customer 1 - Broker DH session key {broker_state.dh_shared_key}")
@@ -188,14 +184,14 @@ async def DHKE_customer_1(data: Request):
         elif "DHKE WITH Customer" == receieved_data["TYPE"]:
             public_key_MC1 = receieved_data["DH_PUBLIC_KEY"]
             print("Diffe_hellman : public key of merchant recieved")
-            merchant_state.dh_shared_key = Customer1.calculate_shared_secret(
+            merchant_state.dh_shared_key = customer_2.calculate_shared_secret(
                 public_key_MC1, merchant_state.dh_private_key, merchant_state.dh_prime
             )
             print(
                 f"Customer 1 - Merchant DH session key {merchant_state.dh_shared_key}"
             )
     else:
-        return {"message": "CUSTOMER1: You are not authorized, please authorize first"}
+        return {"message": "customer_2: You are not authorized, please authorize first"}
 
 
 # end region
@@ -215,7 +211,7 @@ def Customer_Broker_DHKE():
     payload = json.dumps(payload)
     print("Message Sent : ", payload)
     print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
-    DHKE_Customer1_broker(payload)
+    DHKE_customer_2_broker(payload)
 
 
 def Customer_Merchant_DHKE():
@@ -229,7 +225,7 @@ def Customer_Merchant_DHKE():
     payload = json.dumps(payload)
     print("Message Sent : ", payload)
     print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
-    DHKE_Customer1_broker(payload)
+    DHKE_customer_2_broker(payload)
 
 
 # endregion
@@ -465,13 +461,13 @@ async def handle_input(action_number: int = Form(...)):
 
 
 # authorizing request from broker
-@app.post("/auth_customer_1")
-async def auth_customer_1(data: Request):
+@app.post("/auth_customer_2")
+async def auth_customer_2(data: Request):
     receieved_data = await data.json()
     encrypted_message, message_hash = unpack_message(receieved_data)
     print("Encrypted payload :", receieved_data)
 
-    Decrypted_MESS = rsa_decrypt_data(encrypted_message, customer_1_private_key)
+    Decrypted_MESS = rsa_decrypt_data(encrypted_message, customer_2_private_key)
     is_hash_validated = enc_dec.validate_rsa_hash(Decrypted_MESS, message_hash)
     print(f"hash validated for broker ? {is_hash_validated}")
 
@@ -492,8 +488,8 @@ async def auth_customer_1(data: Request):
 
 
 # receiving msg from broker
-@app.post("/message_customer_1")
-async def message_customer_1(data: Request):
+@app.post("/message_customer_2")
+async def message_customer_2(data: Request):
     # use keyed hash
     receieved_data = await data.json()
     encrypted_message, message_hash = unpack_message(receieved_data)

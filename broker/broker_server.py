@@ -82,6 +82,7 @@ class Customer2State:
         self.session_key = b"4103583911"
         self.public_key = "../OLD KEYS/customer2_public_key.pem"
         self.request_id = "10129121"
+        self.Money = "2000"
         self.entity = "Customer"
         (
             self.dh_private_key,
@@ -682,14 +683,34 @@ def broker_to_merchant(customer_decrypted_message):
 async def message_customer_2_broker(data: Request):
     # use keyed hash
     receieved_data = await data.json()
-    encrypted_message, message_hash = unpack_message(receieved_data)
-    # print("Encrypted payload :", receieved_data)
-    customer_msg_decrypted = enc_dec.decrypt_data(encrypted_message, customer_2_state)
+    encrypted_msg, message_hash = unpack_message(receieved_data)
+    print(f"Encrypted payload in bytes from customer2 {encrypted_msg} \n {stars}")
+    customer_msg_decrypted = enc_dec.decrypt_data(encrypted_msg, customer_2_state)
+    print(f"Decrypted data {customer_msg_decrypted} \n {stars}")
     msg_hash = enc_dec.validate_hash(
         customer_msg_decrypted, message_hash, customer_2_state
     )
-    print(f"Hash of message from merchant validated {msg_hash}")
-    print(f"Decrypted data {customer_msg_decrypted}")
+    print(f"Hash of message from customer validated {msg_hash}")
+    msg_type = customer_msg_decrypted["TYPE"]
+
+    # decrypt, verify the hash, take action
+    print("Payload received from Customer")
     # create a new payload to merchant
-    if "MERCHANT_AUTHENTICATION" == customer_msg_decrypted["TYPE"]:
+    if "MERCHANT_AUTHENTICATION" == msg_type:
         customer_to_merchant(customer_msg_decrypted)
+
+    elif "TO_MERCHANT" == msg_type:
+        """
+        1. check if the user exists using UID and get the custoemr state
+        2. check if he is authorized.
+        3. if already authorized forward message to merch.
+        4. else reply to customer that msg is invalid, authorize first
+        """
+        customer_msg_decrypted["TYPE"] = "FROM_CUSTOMER"
+        customer_to_merchant(customer_msg_decrypted)
+    elif "PAYMENT_CONSENT" == msg_type:
+        if customer_msg_decrypted["AMOUNT"] <= int(customer_2_state.Money):
+            # get the payload, append his message to customer and send it
+            broker_to_merchant(customer_msg_decrypted)
+        else:
+            return "**********Insufficient Funds! Payment Aborted**********"

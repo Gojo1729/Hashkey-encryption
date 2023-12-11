@@ -263,7 +263,7 @@ async def DHKE_merchant(data: Request):
         RID = received_data["USERID"]
         customer_state = customers[RID]
         public_key_CM = received_data["DH_PUBLIC_KEY"]
-        print("Diffe_hellman : public key of customer1 recieved:")
+        print("Diffe_hellman : public key of customer {RID} recieved:")
         customer_state.dh_session_key = Merchant.calculate_shared_secret(
             public_key_CM, customer_state.dh_private_key, customer_state.dh_prime
         )

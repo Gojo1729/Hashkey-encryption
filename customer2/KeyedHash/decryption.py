@@ -17,6 +17,7 @@ class Decryption:
 
     def decrypt(self, encrypted_message: bytes, Key: bytes, IV: bytes):
         b = self.hash_256(Key + IV)
+        print(f"Length of encrypted message {len(encrypted_message)}")
 
         batch_size = 32
         msg_len = len(encrypted_message)
@@ -34,8 +35,18 @@ class Decryption:
             concatenated_decrypted_message += decrypted_block
             b = self.hash_256(Key + enc_block)
 
-        unpaded_dmsg = unpad(concatenated_decrypted_message, 32)
+        unpaded_dmsg = concatenated_decrypted_message
+        print(
+            f"************* decrypted message {concatenated_decrypted_message}, {len(concatenated_decrypted_message)=}, { (len(unpaded_dmsg) % 32)} ***************"
+        )
+        try:
+            unpaded_dmsg = unpad(concatenated_decrypted_message, 32)
+        except:
+            pass
+
         decrypted_message = unpaded_dmsg.decode()
-        decrypted_json = dict(json.loads(decrypted_message))
+        decrypted_json = json.loads(decrypted_message)
+        if type(decrypted_json) == str:
+            decrypted_json = json.loads(decrypted_json)
 
         return decrypted_json
