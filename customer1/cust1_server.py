@@ -290,9 +290,11 @@ def send_message(action):
         }
         enc_payload = get_enc_payload_to_merchant(merchant_payload, broker_payload)
         message_broker(enc_payload)
-    elif action == "PAYMENT":
+    elif action[0:7] == "PAYMENT":
+        print("Entered the loop")
         broker_payload = {
             "USERID": global_userid,
+            "AMOUNT": int(action[7:]),
             "HASH": "",
             "TYPE": "PAYMENT_CONSENT",
             "MESSAGE": "Proceed with the Payment",
@@ -527,7 +529,7 @@ async def message_customer_1(data: Request):
             f"Merchant data decrypted {merchant_msg_decrypted['PRODUCTS']}, merchant hash validated -> {is_hash_validated}"
         )
         if c == "Yes":
-            send_message("PAYMENT")
+            send_message("PAYMENT"+str(broker_msg_decrypted["AMOUNT"]))
         else:
             print("Payment Aborted")
         return "VALID"

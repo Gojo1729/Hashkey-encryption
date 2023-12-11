@@ -49,7 +49,7 @@ class Customer1State:
         self.public_key = "../OLD KEYS/customer1_public_key.pem"
         self.request_id = "10129120"
         self.entity = "Customer"
-        self.Money= "2000"
+        self.Money= "200"
         self.DHKE_api = f"{self.host}/DHKE_customer_1"
         (
             self.dh_private_key,
@@ -609,8 +609,11 @@ async def message_customer_1_broker(data: Request):
         customer_msg_decrypted["TYPE"] = "FROM_CUSTOMER"
         customer_to_merchant(customer_msg_decrypted)
     elif "PAYMENT_CONSENT" == msg_type:
-        # get the payload, append his message to customer and send it
-        broker_to_merchant(customer_msg_decrypted)
+        if customer_msg_decrypted["AMOUNT"] <= int(customer_1_state.Money):
+            # get the payload, append his message to customer and send it
+            broker_to_merchant(customer_msg_decrypted)
+        else:
+            return "**********Insufficient Funds! Payment Aborted**********"
 
 
 def broker_to_merchant(customer_decrypted_message):
