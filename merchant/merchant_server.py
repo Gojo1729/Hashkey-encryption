@@ -408,6 +408,7 @@ def handle_message(customer_payload, rid):
         Products = customer_payload["PRODUCTS"]
         cust: CustomerState = customers.get(rid)  # type: ignore
         prods = cust.prods = {}
+        cust.payment=0
         Not_Available = {}
         for customer_product in Products:
             for k in mystate.inventory.values():

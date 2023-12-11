@@ -226,7 +226,7 @@ def validate_credentials(user_id, passwd):
 def BROKER_CUSTOMER(login_creds):
     user_id = login_creds.get("USER_ID")
     password = login_creds.get("PASSWORD")
-    MESSAGE = f"Hi {user_id} , Login Unsuccessful, Invalid Credentials"
+    MESSAGE = f"Hi {user_id}!! Login Unsuccessful, Invalid Credentials"
     valid_user = validate_credentials(user_id, password)
     if valid_user is None:
         print("Invalid credentials")
@@ -514,7 +514,7 @@ async def auth_broker(data: Request):
             print("Authentication payload received from Customer.")
             return_msg = BROKER_CUSTOMER(login_cred)
 
-            return "BROKER: AUTH REQUEST RECEIVED"
+            return return_msg
     else:
         print("Received payload does not contain any information to forward.")
         return ""
