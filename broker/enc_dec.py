@@ -2,6 +2,7 @@ from KeyedHash.encryption import Encryption
 from KeyedHash.decryption import Decryption
 import json
 
+
 enc = Encryption()
 decryption = Decryption()
 
