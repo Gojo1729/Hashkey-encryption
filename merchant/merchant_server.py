@@ -2,6 +2,7 @@ import asyncio
 from fastapi import Depends, FastAPI, Request, Form, HTTPException
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 from Auth_decryption import rsa_decrypt_data
 from Auth_encryption import rsa_encrypt_data
@@ -13,7 +14,6 @@ from DH import DiffieHellman
 from typing import Dict, Tuple
 from random import randint
 import pandas as pd
-from fastapi.responses import RedirectResponse
 import starlette.status as status
 
 # broker_public_key = "../bro_pub.pem"
@@ -88,14 +88,6 @@ class CustomerState:
         self.dh_session_key = None
         self.prods = {}
         self.payment = 0
-        # self.inventory = {
-        #     1: {"PID": 1, "Quantity": 5, "Name": "Watch", "Price": "$300"},
-        #     2: {"PID": 2, "Quantity": 4, "Name": "IPAD", "Price": "$300"},
-        #     3: {"PID": 3, "Quantity": 4, "Name": "MAC", "Price": "$300"},
-        #     4: {"PID": 4, "Quantity": 2, "Name": "AIRTAG", "Price": "$300"},
-        #     5: {"PID": 5, "Quantity": 1, "Name": "AIRPODS", "Price": "$300"},
-        #     6: {"PID": 6, "Quantity": 0, "Name": "Apple TV", "Price": "$300"},
-        # }
 
 
 # Create an instance of the FastAPI class
@@ -389,7 +381,7 @@ def handle_message(customer_payload, rid):
             message_broker(packed_encrypted_message)
 
     elif msg_type == "VIEW_PRODUCTS":
-        cust: CustomerState = customers.get(rid)
+        cust: CustomerState = customers.get(rid)  # type: ignore
         customer_payload = {
             "TIMESTAMP": str(datetime.now()),
             "PRODUCTS": mystate.inventory,
@@ -402,7 +394,7 @@ def handle_message(customer_payload, rid):
             "PAYLOAD": "",
         }
         # handle rid
-        cust: CustomerState = customers.get(rid)
+        cust: CustomerState = customers.get(rid)  # type: ignore
         if cust is None:
             print("MERCHANT: PLEASE AUTH BEFORE YOU VIEW PRODUCTS")
         else:
@@ -414,47 +406,45 @@ def handle_message(customer_payload, rid):
 
     elif msg_type == "BUY_PRODUCTS":
         Products = customer_payload["PRODUCTS"]
-        cust: CustomerState = customers.get(rid)
+        cust: CustomerState = customers.get(rid)  # type: ignore
         prods = cust.prods = {}
         Not_Available = {}
-        for i in Products:
+        for customer_product in Products:
             for k in mystate.inventory.values():
-                if int(i) == k["PID"]:
-                    if int(Products[i]) <= k["Quantity"]:
-                        prods["PRODUCT" + i] = {
-                            "PID": int(i),
-                            "Name": k["Name"],
-                            "Quantity": Products[i],
-                            "Price": k["Price"],
+                if int(customer_product) == k["prod_id"]:
+                    if int(Products[customer_product]) <= k["quantity"]:
+                        prods["PRODUCT" + customer_product] = {
+                            "PID": int(customer_product),
+                            "Name": k["name"],
+                            "Quantity": Products[customer_product],
+                            "Price": k["price_per_item"],
                         }
-                        cust.payment = cust.payment + int(Products[i]) * int(
-                            k["Price"][1:]
-                        )
+                        cust.payment = cust.payment + int(
+                            Products[customer_product]
+                        ) * int(k["price_per_item"])
                     else:
-                        prods["PRODUCT" + i] = {
-                            "PID": int(i),
-                            "Name": k["Name"],
-                            "Quantity": Products[i],
+                        prods["PRODUCT" + customer_product] = {
+                            "PID": int(customer_product),
+                            "Name": k["name"],
+                            "Quantity": Products[customer_product],
                         }
-                        Not_Available[k["PID"]] = k["Quantity"]
+                        Not_Available[k["pID"]] = k["quantity"]
         if Not_Available != {}:
             p = "All Items are not available, You requested for following number of items"
             customer_payload = {
                 "TIMESTAMP": str(datetime.now()),
                 "MESSAGE": p,
                 "PRODUCTS": prods,
-                "HASH": "",
             }
             broker_payload = {
                 "TYPE": "TO_CUSTOMER",
                 "ENTITY": "Merchant",
                 "USERID": f"{rid}",
                 "TIMESTAMP": str(datetime.now()),
-                "HASH": "",
                 "PAYLOAD": "",
             }
             cust.prods = {}
-            cust = customers.get(rid)
+            cust = customers.get(rid)  # type: ignore
             if cust is None:
                 print("MERCHANT: PLEASE AUTH BEFORE YOU VIEW PRODUCTS")
             else:
@@ -467,7 +457,6 @@ def handle_message(customer_payload, rid):
             customer_payload = {
                 "TIMESTAMP": str(datetime.now()),
                 "PRODUCTS": prods,
-                "HASH": "",
             }
             broker_payload = {
                 "TYPE": "PURCHASE_CONSENT",
@@ -475,10 +464,9 @@ def handle_message(customer_payload, rid):
                 "AMOUNT": cust.payment,
                 "USERID": f"{rid}",
                 "TIMESTAMP": str(datetime.now()),
-                "HASH": "",
                 "PAYLOAD": "",
             }
-            cust = customers.get(rid)
+            cust = customers.get(rid)  # type: ignore
             if cust is None:
                 print("MERCHANT: PLEASE AUTH BEFORE YOU VIEW PRODUCTS")
             else:
@@ -488,33 +476,33 @@ def handle_message(customer_payload, rid):
                 )
                 message_broker(enc_payload)
     elif msg_type == "Payment--Done":
-        cust = customers.get(rid)
+        cust = customers.get(rid)  # type: ignore
         prods = cust.prods
         PRODUCTS = {}
-        for j, i in zip(prods.keys(), prods.values()):
+        for j, customer_product in zip(prods.keys(), prods.values()):
             PRODUCTS[j] = {
-                "PID": i["PID"],
-                "Name": i["Name"],
+                "PID": customer_product["PID"],
+                "Name": customer_product["Name"],
                 "State": "Purchased",
             }
-            mystate.inventory[i["PID"]]["Quantity"] = mystate.inventory[i["PID"]][
-                "Quantity"
-            ] - int(cust.prods["PRODUCT" + str(i["PID"])]["Quantity"])
+            mystate.inventory[customer_product["PID"]]["quantity"] = mystate.inventory[
+                customer_product["PID"]
+            ]["quantity"] - int(
+                cust.prods["PRODUCT" + str(customer_product["PID"])]["Quantity"]
+            )
         broker_payload = {
             "TYPE": "TO_CUSTOMER",
             "ENTITY": "Merchant",
             "USERID": f"{rid}",
             "TIMESTAMP": str(datetime.now()),
-            "HASH": "",
             "PAYLOAD": "",
         }
         customer_payload = {
             "TIMESTAMP": str(datetime.now()),
             "PRODUCTS": PRODUCTS,
-            "HASH": "",
         }
         # handle rid
-        cust = customers.get(rid)
+        cust = customers.get(rid)  # type: ignore
         if cust is None:
             print("MERCHANT: PLEASE AUTH BEFORE YOU VIEW PRODUCTS")
         else:

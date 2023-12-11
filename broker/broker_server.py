@@ -643,8 +643,11 @@ async def message_customer_1_broker(data: Request):
         customer_msg_decrypted["TYPE"] = "FROM_CUSTOMER"
         customer_to_merchant(customer_msg_decrypted)
     elif "PAYMENT_CONSENT" == msg_type:
-        # get the payload, append his message to customer and send it
-        broker_to_merchant(customer_msg_decrypted)
+        if customer_msg_decrypted["AMOUNT"] <= int(customer_1_state.Money):
+            # get the payload, append his message to customer and send it
+            broker_to_merchant(customer_msg_decrypted)
+        else:
+            return "**********Insufficient Funds! Payment Aborted**********"
 
 
 def broker_to_merchant(customer_decrypted_message):
