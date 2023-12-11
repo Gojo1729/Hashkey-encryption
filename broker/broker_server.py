@@ -13,6 +13,47 @@ import asyncio
 import enc_dec
 import hashlib
 from typing import Tuple, Dict
+import logging
+
+class CustomFormatter(logging.Formatter):
+
+    grey = "\x1b[38;20m"
+    yellow = "\x1b[33;20m"
+    red = "\x1b[31;20m"
+    bold_red = "\x1b[31;1m"
+    reset = "\x1b[0m"
+    blue = "\x1b[34m"
+    white = "\x1b[97m"
+    green = "\x1b[32m"
+    bold_green = "\x1b[1m\x1b[32m"
+    format = "%(message)s"
+
+    FORMATS = {
+        logging.DEBUG: green + format + reset,
+        logging.INFO: bold_green + format + reset,
+        logging.WARNING: yellow + format + reset,
+        logging.ERROR: blue + format + reset,
+        logging.CRITICAL: bold_red + format + reset
+    }
+
+    def format(self, record):
+        log_fmt = self.FORMATS.get(record.levelno)
+        formatter = logging.Formatter(log_fmt)
+        return formatter.format(record)
+
+# create logger with 'spam_application'
+logger = logging.getLogger("My_app")
+logger.setLevel(logging.DEBUG)
+
+# create console handler with a higher log level
+ch = logging.StreamHandler()
+ch.setLevel(logging.DEBUG)
+
+ch.setFormatter(CustomFormatter())
+
+logger.addHandler(ch)
+
+
 
 
 # broker_public_key = "../bro_pub.pem"
@@ -162,12 +203,12 @@ def send_message(state, encrypted_data, message_type):
                     if response.status_code == 200:
                         print(f"{response.json()}")
                         if response.json() == state.request_id:
-                            print(
+                            logger.info(
                                 f"Mutual authentication with {state.user_id} successfull"
                             )
                             state.auth_done = True
                         else:
-                            print(
+                            logger.critical(
                                 f"Mutual authentication with {state.user_id} {response.text} un-successfull"
                             )
                             state.auth_done = False
@@ -175,11 +216,11 @@ def send_message(state, encrypted_data, message_type):
                         state.auth_done = False
                 elif state.entity == "Merchant":
                     if response.status_code == 200:
-                        print(
+                        logger.info(
                             f"BROKER: Successfully send auth message sent to merchant"
                         )
                     else:
-                        print("Error in sending auth message to merchant")
+                        logger.critical("Error in sending auth message to merchant")
 
                 return "BROKER: MESSAGE SENT"
             elif message_type == DHKE_MSG:
@@ -202,7 +243,7 @@ def send_message(state, encrypted_data, message_type):
 
 
 def validate_credentials(user_id, passwd):
-    print(f"Validating: User ID = {user_id}, Password = {passwd}")
+    logger.warning(f"Validating: User ID = {user_id}, Password = {passwd}")
     valid_user = customers_state.get(user_id)
     if user_id == customer_1_state.user_id:
         hash_pass = hashcheck.hash_password(customer_1_state.salt, passwd)
@@ -242,6 +283,10 @@ def BROKER_CUSTOMER(login_creds):
     payload_hash = enc_dec.enc.hash_256(json.dumps(auth_payload).encode("latin1"))
     payload = json.dumps(auth_payload)
     encrypted_data = rsa_encrypt_data(payload, valid_user.public_key)
+    logger.debug("Credentials Validated")
+    print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+    logger.critical(f"Encrypted Auth Payload to the customer: {encrypted_data}")
+    print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
     message_wrapper = {
         "MSG": encrypted_data.decode("latin1"),
         "HASH": payload_hash.decode("latin1"),
@@ -264,13 +309,16 @@ def auth_merchant():
     payload_hash = enc_dec.enc.hash_256(json.dumps(auth_payload).encode("latin1"))
     payload = json.dumps(auth_payload)
     encrypted_data = rsa_encrypt_data(payload, merchant_state.public_key)
-    print(f"Encrypted message to merchant {encrypted_data}\n --- hash {payload_hash}")
+    print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+    logger.critical(f"Encrypted message to Merchant {encrypted_data}")
+    logger.error(f" --- HASH {payload_hash}---")
     message_wrapper = {
         "MSG": encrypted_data.decode("latin1"),
         "HASH": payload_hash.decode("latin1"),
     }
     send_message(merchant_state, message_wrapper, AUTH_MSG)
     print("Authentication response sent to Merchant.")
+    print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
 
 
 def customer_to_merchant(customer_decrypted_message):
@@ -280,8 +328,8 @@ def customer_to_merchant(customer_decrypted_message):
     customer_decrypted_message["USERID"] = random_customer_id
     customer_decrypted_message["ENTITY"] = "Broker"
     customer_decrypted_message["TIMESTAMP"] = str(datetime.now())
-    print(
-        f"payload to merchant {customer_decrypted_message}, type {type(customer_decrypted_message)}"
+    logger.warning(
+        f"payload prepared for merchant {customer_decrypted_message}"
     )
     merchant_payload_hash = enc_dec.enc.keyed_hash(
         json.dumps(customer_decrypted_message).encode("latin1"), merchant_state
@@ -289,9 +337,10 @@ def customer_to_merchant(customer_decrypted_message):
     encrypted_payload_to_merchant = enc_dec.encrypt_payload(
         customer_decrypted_message, merchant_state
     )
-    print(
-        f"Encrypted message sent to merchant {encrypted_payload_to_merchant} \n \n *** Hash is {merchant_payload_hash}"
-    )
+    print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+    logger.critical(
+        f"Encrypted message sent to merchant {encrypted_payload_to_merchant}")
+    logger.error(f"---Hash is {merchant_payload_hash}---")
     packed_encrypted_message = pack_message(
         encrypted_payload_to_merchant, merchant_payload_hash
     )
@@ -312,9 +361,10 @@ def BROKER_CUSTOMER1_DHKE():  # THIS IS FOR SENDING THE KEY TO CUSTOMER1
         "DH_PUBLIC_KEY": customer_1_state.dh_public_key,
         "TS": timestamp,
     }
-
+    print("Sending DH_PUBLIC_KEY to Customer 1")
+    print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
     payload = json.dumps(payload)
-    print("Message Sent : ", payload)
+    logger.critical(f"\n {payload}")
     print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
     send_message(customer_1_state, payload, DHKE_MSG)
 
@@ -326,9 +376,10 @@ def BROKER_MERCHANT_DHKE():  # THIS IS FOR SENDING THE KEY TO MERCHANT
         "DH_PUBLIC_KEY": merchant_state.dh_public_key,
         "TS": timestamp,
     }
-
+    print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
     payload = json.dumps(payload)
-    print("Message Sent : ", payload)
+    print("Sending DH_PUBLIC_KEY to Broker: ")
+    logger.critical(f"\n {payload}")
     print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
     send_message(merchant_state, payload, DHKE_MSG)
 
@@ -342,8 +393,10 @@ def BROKER_CUSTOMER2_DHKE():  # THIS IS FOR SENDING THE KEY TO CUSTOMER2
         "TS": timestamp,
     }
 
+    print("Sending DH_PUBLIC_KEY to Customer 2")
+    print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
     payload = json.dumps(payload)
-    print("Message Sent : ", payload)
+    logger.critical(f"\n {payload}")
     print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
     send_message(customer_2_state, payload, DHKE_MSG)
 
@@ -357,15 +410,19 @@ async def DHKE_Customer1_broker(data: Request):
     receieved_data = await data.body()
     receieved_data = receieved_data.decode("utf-8")
     receieved_data = json.loads(receieved_data)
-    print("payload :", receieved_data)
+    print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+    logger.info("payload :")
+    logger.info(f"{receieved_data}")
 
     if "DHKE" == receieved_data["TYPE"]:  # THIS IS WHEN CUSTOMER1 SENDS HIS KEY
         public_key_C1B = receieved_data["DH_PUBLIC_KEY"]
-        print("Diffe_hellman : public key of customer1 recieved")
+        print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+        logger.critical("Diffe_hellman : public key of customer1 recieved")
         customer_1_state.dh_shared_key = Broker.calculate_shared_secret(
             public_key_C1B, customer_1_state.dh_private_key, customer_1_state.dh_prime
         )
-        print(f"Customer 1 DH session key {customer_1_state.dh_shared_key}")
+        logger.critical(f"Calculated Customer 1 DH session key is {customer_1_state.dh_shared_key}")
+        print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
 
     elif (
         "DHKE WITH MERCHANT" == receieved_data["TYPE"]
@@ -373,7 +430,8 @@ async def DHKE_Customer1_broker(data: Request):
         print("Diffe_hellman : Recieved from Customer forwarding to Merchant")
         receieved_data["USERID"] = customer_1_state.random_id
         payload = json.dumps(receieved_data)
-        print("Message Sent : ", payload)
+        print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+        logger.info(f"Sending Message : {payload}")
         print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
         send_message(merchant_state, payload, DHKE_MSG)
 
@@ -386,15 +444,19 @@ async def DHKE_Customer2_broker(data: Request):
     receieved_data = await data.body()
     receieved_data = receieved_data.decode("utf-8")
     receieved_data = json.loads(receieved_data)
-    print("payload :", receieved_data)
+    print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+    logger.info("payload :")
+    logger.info(f"{receieved_data}")
 
     if "DHKE" == receieved_data["TYPE"]:  # THIS IS WHEN CUSTOMER2 SENDS H   IS KEY
         public_key_C2B = receieved_data["DH_PUBLIC_KEY"]
-        print("Diffe_hellman : public key of customer2 recieved")
+        print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+        logger.critical("Diffe_hellman : public key of customer2 recieved")
         customer_2_state.dh_shared_key = Broker.calculate_shared_secret(
             public_key_C2B, customer_2_state.dh_private_key, customer_2_state.dh_prime
         )
-        print(f"Customer 2 DH session key {customer_2_state.dh_shared_key}")
+        logger.critical(f"Calculated Customer 1 DH session key is {customer_2_state.dh_shared_key}")
+        print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
 
     elif (
         "DHKE WITH MERCHANT" == receieved_data["TYPE"]
@@ -402,7 +464,7 @@ async def DHKE_Customer2_broker(data: Request):
         print("Diffe_hellman : Recieved from Customer forwarding to Merchant")
         receieved_data["USERID"] = customer_2_state.random_id
         payload = json.dumps(receieved_data)
-        print("Message Sent : ", payload)
+        logger.info(f"Message Sent :  {payload}")
         print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
         send_message(merchant_state, payload, DHKE_MSG)
 
@@ -416,12 +478,15 @@ async def DHKE_Merchant_broker(data: Request):
 
     if "DHKE" == receieved_data["TYPE"]:
         public_key_MB = receieved_data["DH_PUBLIC_KEY"]
-        print("Diffe_hellman : public key of Merchant recieved")
+        print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+        logger.critical("Diffe_hellman : public key of Merchant recieved")
+        logger.info("payload :")
+        logger.info(f"{receieved_data}")
         merchant_state.dh_shared_key = Broker.calculate_shared_secret(
             public_key_MB, merchant_state.dh_private_key, merchant_state.dh_prime
         )
-        print(f"Merchant - Broker DH session key {merchant_state.dh_shared_key}")
-
+        logger.critical(f"Calculated Merchant - Broker DH session key {merchant_state.dh_shared_key}")
+        print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
     elif (
         "DHKE WITH Customer" == receieved_data["TYPE"]
     ):  # THIS SEND TO CUSTOMER 1 OR 2 DEPENDING ON RID AND DEL RID BEFORE SENDING IT
@@ -429,12 +494,13 @@ async def DHKE_Merchant_broker(data: Request):
         for customer_state in customers_state.values():
             if customer_state.random_id == receieved_data["USERID"]:
                 payload = json.dumps(receieved_data)
-                print("Message Sent : ", payload)
-                print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
-                send_message(customer_state, payload, DHKE_MSG)
-                print(
-                    f"Diffe_hellman : Recieved from Merchant forwarding to Customer {customer_state.user_id}"
+                logger.critical(
+                    f"Diffe_hellman : Recieved from Merchant forwarded to Customer {customer_state.user_id}"
                 )
+                logging.info(f"Message Sent :  {payload}")
+                send_message(customer_state, payload, DHKE_MSG)
+                
+                print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
         del receieved_data["USERID"]
 
 
@@ -481,39 +547,52 @@ async def handle_input(action_number: int = Form(...)):
 async def auth_broker(data: Request):
     receieved_data = await data.json()
     encrypted_message, message_hash = unpack_message(receieved_data)
-    print(f"original message {receieved_data}")
-    print(f"Encrypted payload : {encrypted_message}\n ---- message hash {message_hash}")
-
+    print(f"Authentication Request Received")
+    print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+    logger.critical(f"Received Encrypted payload : {encrypted_message}")
+    logger.error(f"---- message hash {message_hash}---")
+    logger.warning(f"Hash validated for customer ? ")
     Decrypted_MESS = rsa_decrypt_data(encrypted_message, broker_private_key)
     is_hash_validated = enc_dec.validate_rsa_hash(Decrypted_MESS, message_hash)
-    print(f"Hash validated for customer ? {is_hash_validated=}")
+    logger.info({is_hash_validated})
+    print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+    
+    
 
     Decrypted_MESS = json.loads(Decrypted_MESS)
     formatted_data = json.dumps(Decrypted_MESS, indent=2)
     entity = Decrypted_MESS["ENTITY"]
-    print(f"Received from {entity}:\n {formatted_data}")
+    print(f"Decrypted Payload Received from {entity}:")
+    logger.info(f"\n {formatted_data}")
+    print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
 
     return_msg = ""
     if "MUTUAL_AUTHENTICATION" == Decrypted_MESS["TYPE"]:
         entity = Decrypted_MESS["ENTITY"]
-        print(entity)
+        # print(entity)
         if entity == "Merchant":
             print("Authentication payload received from Merchant.")
             if Decrypted_MESS["PAYLOAD"]["RESPONSE_ID"] == merchant_state.request_id:
-                print("MUTUAL AUTHENTICATION DONE WITH MERCHANT")
+                payload = Decrypted_MESS["PAYLOAD"]
+                print("Extracted Payload")
+                logger.debug(payload)
+                logger.info("MUTUAL AUTHENTICATION DONE WITH MERCHANT")
+                print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
                 merchant_state.auth_done = True
                 return_msg = Decrypted_MESS["PAYLOAD"]["REQUEST_ID"]
+                
                 return return_msg
             else:
                 merchant_state.auth_done = False
 
         elif entity == "Customer":
+            payload = Decrypted_MESS["PAYLOAD"]
             login_cred = Decrypted_MESS["PAYLOAD"]["LOGINCRED"]
-            print(login_cred)
-            print("Authentication payload received from Customer.")
+            print("Extracted Payload")
+            logger.debug(payload)
             return_msg = BROKER_CUSTOMER(login_cred)
 
-            return "BROKER: AUTH REQUEST RECEIVED"
+            return "BROKER: AUTH REQUEST RESPONSE"
     else:
         print("Received payload does not contain any information to forward.")
         return ""
@@ -538,13 +617,16 @@ async def message_merchant_broker(data: Request):
     # use keyed hash
     receieved_data = await data.json()
     encrypted_message, message_hash = unpack_message(receieved_data)
-    print(f"Encrypted payload in bytes from merchant {encrypted_message} \n {stars}")
+    print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+    logger.info(f"Encrypted payload from from merchant") 
+    logger.critical({encrypted_message})
     merchant_msg_decrypted = enc_dec.decrypt_data(encrypted_message, merchant_state)
     msg_hash = enc_dec.validate_hash(
         merchant_msg_decrypted, message_hash, merchant_state
     )
-    print(f"Hash of message from merchant validated {msg_hash}")
-
+    logger.error(f"Merchant Payload Hash is ---{message_hash}") 
+    logger.info(f"Hash of message from merchant validated {msg_hash}")
+    print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
     msg_type = merchant_msg_decrypted["TYPE"]
     cust_rid = merchant_msg_decrypted["USERID"]
     valid_customer = get_valid_customer(cust_rid, "MERCHANT")
@@ -552,13 +634,11 @@ async def message_merchant_broker(data: Request):
     if valid_customer is None:
         return "INVALID_MESSAGE"
 
-    print(
-        f"Decrypted data from merchant {merchant_msg_decrypted}, {type(merchant_msg_decrypted)=}"
-    )  # create a new payload to merchant
+    # print(f"Decrypted data from merchant {merchant_msg_decrypted}, {type(merchant_msg_decrypted)=}"  
+    # # create a new payload to merchant
     customer_payload = None
     timestamp = str(datetime.now())
     if "CUSTOMER_AUTHENTICATION" == msg_type:
-        print("Payload received from Merchant")
         print(f"Modified payload forwarded to customer")
         # encrypt payload to customer
         customer_payload = {
@@ -568,7 +648,7 @@ async def message_merchant_broker(data: Request):
             "TIMESTAMP": timestamp,
         }
         # customer_hash = enc_dec.enc.keyed_hash(
-        #     json.dumps(customer_payload).encode("latin1"), valid_customer
+            #  json.dumps(customer_payload).encode("latin1"), valid_customer
         # )
 
     elif "TO_CUSTOMER" == msg_type:
@@ -607,6 +687,8 @@ async def message_merchant_broker(data: Request):
     )
     enc_payload = enc_dec.encrypt_payload(customer_payload, valid_customer)
     encrypted_packed_message = pack_message(enc_payload, customer_hash)
+    logger.critical(f"Encrypted Message Forwarded to customer: {encrypted_message}")
+    print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
     send_message(valid_customer, encrypted_packed_message, KEYED_MSG)
 
     return "MESSAGE SENT TO CUSTOMER"
@@ -618,19 +700,23 @@ async def message_customer_1_broker(data: Request):
     # use keyed hash
     receieved_data = await data.json()
     encrypted_msg, message_hash = unpack_message(receieved_data)
-    print(f"Encrypted payload in bytes from customer1 {encrypted_msg} \n {stars}")
+    print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+    logger.info(f"Encrypted payload Received from customer 1") 
+    logger.critical({encrypted_msg})
     customer_msg_decrypted = enc_dec.decrypt_data(encrypted_msg, customer_1_state)
-    print(f"Decrypted data {customer_msg_decrypted} \n {stars}")
+    # print(f"Decrypted data {customer_msg_decrypted} \n {stars}")
     msg_hash = enc_dec.validate_hash(
         customer_msg_decrypted, message_hash, customer_1_state
     )
-    print(f"Hash of message from customer validated {msg_hash}")
+    logger.info(f"Hash of message from customer 1 validated {msg_hash}")
+    print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
     msg_type = customer_msg_decrypted["TYPE"]
 
     # decrypt, verify the hash, take action
-    print("Payload received from Customer")
+    # print("Payload received from Customer")
     # create a new payload to merchant
     if "MERCHANT_AUTHENTICATION" == msg_type:
+        print("Customer requested for Merchant Authentication")
         customer_to_merchant(customer_msg_decrypted)
 
     elif "TO_MERCHANT" == msg_type:
@@ -665,9 +751,10 @@ def broker_to_merchant(customer_decrypted_message):
     )
 
     encrypted_payload_to_merchant = enc_dec.encrypt_payload(payload, merchant_state)
-    print(
-        f"Encrypted message sent to merchant {encrypted_payload_to_merchant} \n \n *** Hash is {merchant_payload_hash}"
-    )
+    print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+    logger.critical(
+        f"Encrypted message sent to merchant {encrypted_payload_to_merchant}")
+    logger.error(f"--- Hash is {merchant_payload_hash}---")
     packed_encrypted_message = pack_message(
         encrypted_payload_to_merchant, merchant_payload_hash
     )
