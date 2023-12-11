@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, shrink-to-fit=no"
+    />
+    <title>Product Information</title>
+  </head>
+  <body>
+    <div class="container mt-4">
+      <h2>Product Information</h2>
+      {% for product in products_info %}
+      <div class="product-info">
+        <ul>
+          <li><strong>Product ID:</strong> {{ product.prod_id }}</li>
+          <li><strong>Name:</strong> {{ product.name }}</li>
+          <li><strong>Quantity:</strong> {{ product.quantity }}</li>
+          <li><strong>Price per Item:</strong> {{ product.price_per_item }}</li>
+        </ul>
+        <hr />
+      </div>
+      {% endfor %}
+    </div>
+  </body>
+</html>

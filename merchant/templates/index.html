@@ -2,42 +2,73 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, shrink-to-fit=no"
+    />
     <link
       rel="stylesheet"
       href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css"
     />
-    <title>Customer Page</title>
+    <title>Add Product to Inventory</title>
   </head>
   <body>
-    <p>
-      <h3>1. To update inventory</h3>
-
-    </p>
-    <div class="container mt-5">
-      <h2>Enter Numbers and Text</h2>
-      <form action="/handleinput" method="post" enctype="multipart/form-data">
+    <div class="container mt-4">
+      <h2>Add Product to Inventory</h2>
+      <form
+        action="/add_new_product"
+        method="post"
+        enctype="multipart/form-data"
+      >
         <div class="form-group">
-          <label for="action_number">Enter Number:</label>
+          <label for="prod_id">Product ID:</label>
           <input
             type="number"
             class="form-control"
-            id="action_number"
-            name="action_number"
-            placeholder="Enter a number"
+            id="prod_id"
+            name="prod_id"
+            required
           />
         </div>
-        <!-- <div class="form-group">
-          <label for="number_input">Enter Text:</label>
+        <div class="form-group">
+          <label for="name">Product Name:</label>
           <input
             type="text"
             class="form-control"
-            id="text_input"
-            placeholder="Enter text"
+            id="name"
+            name="name"
+            required
           />
-        </div> -->
-        <button type="submit" class="btn btn-primary">Submit</button>
+        </div>
+        <div class="form-group">
+          <label for="quantity">Product Quantity:</label>
+          <input
+            type="number"
+            class="form-control"
+            id="quantity"
+            name="quantity"
+            required
+          />
+        </div>
+        <div class="form-group">
+          <label for="price_per_item">Price per Item:</label>
+          <input
+            type="number"
+            step="1"
+            class="form-control"
+            id="price_per_item"
+            name="price_per_item"
+            required
+          />
+        </div>
+        <button type="submit" class="btn btn-primary">Add Product</button>
       </form>
+
+      <a href="/inventory" class="btn btn-info mt-3">Display Inventory</a>
     </div>
+
+    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.9.2/dist/umd/popper.min.js"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
   </body>
 </html>
