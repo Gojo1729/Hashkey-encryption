@@ -10,7 +10,9 @@ import json
 import httpx
 import enc_dec
 import time
+import pandas as pd
 from DH import DiffieHellman
+
 
 # broker_public_key = "../bro_pub.pem"
 # customer1_private_key = "../cus1_pri.pem"
@@ -499,17 +501,23 @@ async def message_customer_1(data: Request):
         is_hash_validated = enc_dec.validate_hash(
             merchant_msg_decrypted, merchant_state
         )
+        try:
+            print(merchant_msg_decrypted['MESSAGE'])
+        except KeyError as ke:
+            pass
+        p= pd.DataFrame(merchant_msg_decrypted['PRODUCTS'].values())
         print(
-            f"Merchant data decrypted {merchant_msg_decrypted['PRODUCTS']}, merchant hash validated -> {is_hash_validated}"
+            f"Merchant data decrypted | Merchant hash validated -> {is_hash_validated} \n {p},"
         )
         return "VALID"
 
     elif "PURCHASE_CONSENT" == broker_msg_decrypted["TYPE"]:
         merchant_payload = broker_msg_decrypted["PAYLOAD"].encode("latin1")
         merchant_msg_decrypted = enc_dec.decrypt_data(merchant_payload, merchant_state)
+        print(pd.DataFrame(merchant_msg_decrypted["PRODUCTS"]))
         c = input(
-            "Merchant Requested Payment Request for the purchase of the following items {} Yes/No".format(
-                merchant_msg_decrypted["PRODUCTS"]
+            "Merchant Requested Payment Request of amount ${} for the purchase of the items shown above  Yes/No".format(
+                broker_msg_decrypted["AMOUNT"]
             )
         )
         is_hash_validated = enc_dec.validate_hash(

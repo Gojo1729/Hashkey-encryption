@@ -11,6 +11,8 @@ import httpx
 import enc_dec
 from DH import DiffieHellman
 from typing import Dict
+from random import randint
+import pandas as pd
 
 # broker_public_key = "../bro_pub.pem"
 # merchant_private_key = "../mer_pri.pem"
@@ -64,13 +66,31 @@ class CustomerState:
         ) = Merchant.generate_keypair(10000000061)
         self.dh_session_key = None
         self.prods = {}
+        self.payment= 0
         self.Inventory = {
-            1: {"PID": 1, "Quantity": 5, "Name": "Watch", "Access_Code": 1616315},
-            2: {"PID": 2, "Quantity": 4, "Name": "IPAD", "Access_Code": 6516516},
-            3: {"PID": 3, "Quantity": 4, "Name": "MAC", "Access_Code": 1616315},
-            4: {"PID": 4, "Quantity": 2, "Name": "AIRTAG", "Access_Code": 1616315},
-            5: {"PID": 5, "Quantity": 1, "Name": "AIRPODS", "Access_Code": 1616315},
-            6: {"PID": 6, "Quantity": 0, "Name": "Apple TV", "Access_Code": 1616315},
+            1: {"PID": 1, "Quantity": 5, "Name": "Watch", "Price": "$300"},
+            2: {"PID": 2, "Quantity": 4, "Name": "IPAD", "Price": "$300"},
+            3: {"PID": 3, "Quantity": 4, "Name": "MAC", "Price": "$300"},
+            4: {"PID": 4, "Quantity": 2, "Name": "AIRTAG", "Price": "$300"},
+            5: {"PID": 5, "Quantity": 1, "Name": "AIRPODS","Price": "$300"},
+            6: {"PID": 6, "Quantity": 0, "Name": "Apple TV", "Price": "$300"}
+        }
+        self.Buy_Inventory = {
+            1: {"PID": 1,  "Name": "Watch", "Price": "$300"},
+            2: {"PID": 2,  "Name": "IPAD", "Price": "$300"},
+            3: {"PID": 3,  "Name": "MAC", "Price": "$1500"},
+            4: {"PID": 4,  "Name": "AIRTAG", "Price": "$25"},
+            5: {"PID": 5,  "Name": "AIRPODS", "Price": "$200"},
+            6: {"PID": 6,  "Name": "Apple TV", "Price": "$500"},
+        }
+        self.Access_Codes={
+            1:{"Access_code": randint(661651,651651651)},
+            2:{"Access_code": randint(661651,651651651)},
+            3:{"Access_code": randint(661651,651651651)},
+            4:{"Access_code": randint(661651,651651651)},
+            5:{"Access_code": randint(661651,651651651)},
+            6:{"Access_code": randint(661651,651651651)}
+
         }
 
 
@@ -325,13 +345,10 @@ def handle_message(customer_payload, rid):
             message_broker(encrypt_broker_payload)
 
     elif msg_type == "VIEW_PRODUCTS":
+        cust: CustomerState = customers.get(rid)
         customer_payload = {
             "TIMESTAMP": str(datetime.now()),
-            "PRODUCTS": {
-                "PROD1": {"PID": 1, "NAME": "WATCH", "QUANTITY": 5},
-                "PROD2": {"PID": 2, "NAME": "MAC", "QUANTITY": 5},
-                "PROD2": {"PID": 3, "NAME": "IPAD", "QUANTITY": 5},
-            },
+            "PRODUCTS": cust.Buy_Inventory,
             "HASH": "",
         }
         broker_payload = {
@@ -365,17 +382,19 @@ def handle_message(customer_payload, rid):
                         prods["PRODUCT" + i] = {
                             "PID": int(i),
                             "Name": k["Name"],
-                            "Quantity": k["Quantity"],
+                            "Quantity": Products[i],
+                            "Price": k["Price"]
                         }
+                        cust.payment=cust.payment + int(Products[i])*int(k["Price"][1:])
                     else:
                         prods["PRODUCT" + i] = {
                             "PID": int(i),
                             "Name": k["Name"],
-                            "Quantity": k["Quantity"],
+                            "Quantity": Products[i],
                         }
                         Not_Available[k["PID"]] = k["Quantity"]
         if Not_Available != {}:
-            p = "All Items are not available, Product available"
+            p = "All Items are not available, You requested for following number of items"
             customer_payload = {
                 "TIMESTAMP": str(datetime.now()),
                 "MESSAGE": p,
@@ -409,6 +428,7 @@ def handle_message(customer_payload, rid):
             broker_payload = {
                 "TYPE": "PURCHASE_CONSENT",
                 "ENTITY": "Merchant",
+                "AMOUNT": cust.payment,
                 "USERID": f"{rid}",
                 "TIMESTAMP": str(datetime.now()),
                 "HASH": "",
@@ -432,8 +452,9 @@ def handle_message(customer_payload, rid):
                 "PID": i["PID"],
                 "Name": i["Name"],
                 "State": "Purchased",
-                "ACCESS_CODE": 612612651,
+                "ACCESS_CODE": cust.Access_Codes.get(i["PID"])["Access_code"],
             }
+            cust.Inventory[i["PID"]]["Quantity"] = cust.Inventory[i["PID"]]["Quantity"] - int(cust.prods["PRODUCT"+str(i["PID"])]["Quantity"])
         broker_payload = {
             "TYPE": "TO_CUSTOMER",
             "ENTITY": "Merchant",
@@ -457,6 +478,8 @@ def handle_message(customer_payload, rid):
                 customer_payload, broker_payload, cust
             )
             message_broker(enc_payload)
+            print("Updated Inventory after the purchase: \n")
+            print(pd.DataFrame(cust.Inventory.values()))
 
 
 def take_action_for_customer(payload, rid, enc_type):

@@ -1,6 +1,8 @@
 from KeyedHash.encryption import Encryption
 from KeyedHash.decryption import Decryption
 import json
+from json2table import convert
+
 
 enc = Encryption()
 decryption = Decryption()
@@ -32,3 +34,8 @@ def encrypt_payload(payload, state):
     encoded_MESS_CB = json.dumps(payload).encode("latin1")
     enc_data = enc.encrypt(encoded_MESS_CB, Key, IV)
     return enc_data
+
+def view_decrypt(encrypted_message, state):
+    Key, IV = state.session_key, state.iv
+    decrypted_msg = decryption.decrypt(convert(encrypted_message), Key, IV)
+    return decrypted_msg
