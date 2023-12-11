@@ -10,8 +10,10 @@ import json
 import httpx
 import enc_dec
 import time
+import pandas as pd
 from DH import DiffieHellman
 from typing import Tuple, Dict
+
 
 # broker_public_key = "../bro_pub.pem"
 # customer1_private_key = "../cus1_pri.pem"
@@ -159,7 +161,7 @@ def DHKE_Customer1_broker(encrypted_data):
                     detail="Failed to send JSON request",
                 )
 
-    asyncio.create_task(send_message())
+    asyncio.create_task(send_message())  # type: ignore
 
 
 # for receiving DHKE request from broker
@@ -308,7 +310,6 @@ def send_message(action):
     elif action == "PAYMENT":
         broker_payload = {
             "USERID": global_userid,
-            "HASH": "",
             "TYPE": "PAYMENT_CONSENT",
             "MESSAGE": "Proceed with the Payment",
             "TIMESTAMP": str(datetime.now()),
@@ -522,8 +523,13 @@ async def message_customer_1(data: Request):
         is_hash_validated = enc_dec.validate_hash(
             merchant_msg_decrypted, message_hash, merchant_state
         )
+        try:
+            print(merchant_msg_decrypted["MESSAGE"])
+        except KeyError as ke:
+            pass
+        p = pd.DataFrame(merchant_msg_decrypted["PRODUCTS"].values())
         print(
-            f"Merchant data decrypted {merchant_msg_decrypted['PRODUCTS']}, merchant hash validated -> {is_hash_validated}"
+            f"Merchant data decrypted | Merchant hash validated -> {is_hash_validated} \n {p},"
         )
         return "VALID"
 
@@ -532,8 +538,8 @@ async def message_customer_1(data: Request):
         encrypted_message, message_hash = unpack_message(merchant_payload)
         merchant_msg_decrypted = enc_dec.decrypt_data(encrypted_message, merchant_state)
         c = input(
-            "Merchant Requested Payment Request for the purchase of the following items {} Yes/No".format(
-                merchant_msg_decrypted["PRODUCTS"]
+            "Merchant Requested Payment Request of amount ${} for the purchase of the items shown above  Yes/No".format(
+                broker_msg_decrypted["AMOUNT"]
             )
         )
         is_hash_validated = enc_dec.validate_hash(

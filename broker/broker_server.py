@@ -14,6 +14,7 @@ import enc_dec
 import hashlib
 from typing import Tuple, Dict
 
+
 # broker_public_key = "../bro_pub.pem"
 # broker_private_key = "../bro_pri.pem"
 # customer1_public_key = "../cus_pub.pem"
@@ -52,6 +53,7 @@ class Customer1State:
         self.public_key = "../OLD KEYS/customer1_public_key.pem"
         self.request_id = "10129120"
         self.entity = "Customer"
+        self.Money = "2000"
         self.DHKE_api = f"{self.host}/DHKE_customer_1"
         (
             self.dh_private_key,
@@ -102,6 +104,7 @@ class MerchantState:
         self.public_key = "../OLD KEYS/merchant_public_key.pem"
         self.request_id = "10129122"
         self.entity = "Merchant"
+        self.Money = "20000"
         self.DHKE_api = f"{self.host}/DHKE_merchant"
         (
             self.dh_private_key,
@@ -588,6 +591,7 @@ async def message_merchant_broker(data: Request):
         customer_payload = {
             "TYPE": "PURCHASE_CONSENT",
             "ENTITY": "BROKER",
+            "AMOUNT": merchant_msg_decrypted["AMOUNT"],
             "TIMESTAMP": str(datetime.now()),
             "PAYLOAD": merchant_msg_decrypted["PAYLOAD"],
         }
