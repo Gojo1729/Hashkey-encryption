@@ -22,7 +22,10 @@ broker mutually authenticates merchant
 broker sends session keys to merchant
 
 Customer1 authenticates merchant
+Customer1 sends sessions keys to merchant
+
 Customer2 authenticates merchant
+Customer2 sends sessions keys to merchant
 
 Customer1/Customer2 views product
 Customer1/Customer2 buys product
