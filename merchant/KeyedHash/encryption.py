@@ -42,4 +42,5 @@ class Encryption:
             encrypted_blocks += encrypted_block
             b = self.hash_256(Key + encrypted_block)
 
+        print(f"Encrypted block size {len(encrypted_blocks)}")
         return encrypted_blocks

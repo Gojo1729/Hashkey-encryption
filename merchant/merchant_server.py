@@ -13,7 +13,7 @@ import httpx
 import enc_dec
 from DH import DiffieHellman
 from typing import Dict, Tuple
-from random import randint
+import random
 import pandas as pd
 import starlette.status as status
 
@@ -562,6 +562,7 @@ def handle_message(customer_payload, rid):
         customer_payload = {
             "TIMESTAMP": str(datetime.now()),
             "PRODUCTS": PRODUCTS,
+            "RANDOM_BYTES": (random.randint(0, 1000) * b"x").decode(ENCODING_TYPE),
         }
         # handle rid
         cust = customers.get(rid)  # type: ignore
