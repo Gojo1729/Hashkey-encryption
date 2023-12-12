@@ -88,8 +88,9 @@ class Customer1State:
         self.auth_done = False
         self.random_id = "6514161"
         # assume DH is done
-        self.iv = b"4832500747"
-        self.session_key = b"4103583911"
+        # self.iv = b"4832500747"
+        # self.session_key = b"4103583911"
+        self.session_key, self.iv = None, None
         self.public_key = "../OLD KEYS/customer1_public_key.pem"
         self.request_id = "10129120"
         self.entity = "Customer"
@@ -377,7 +378,7 @@ def BROKER_MERCHANT_DHKE():  # THIS IS FOR SENDING THE KEY TO MERCHANT
     }
     print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
     payload = json.dumps(payload)
-    print("Sending DH_PUBLIC_KEY to Broker: ")
+    print("Sending DH_PUBLIC_KEY to Merchant: ")
     logger.critical(f"\n {payload}")
     print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
     send_message(merchant_state, payload, DHKE_MSG)
@@ -420,6 +421,9 @@ async def DHKE_Customer1_broker(data: Request):
         customer_1_state.dh_shared_key = Broker.calculate_shared_secret(
             public_key_C1B, customer_1_state.dh_private_key, customer_1_state.dh_prime
         )
+
+        customer_1_state.session_key = str(customer_1_state.dh_shared_key).encode()  # type: ignore
+        customer_1_state.iv = str(customer_1_state.dh_shared_key)[::-1].encode()  # type: ignore
         logger.critical(
             f"Calculated Customer 1 DH session key is {customer_1_state.dh_shared_key}"
         )
@@ -440,8 +444,10 @@ async def DHKE_Customer1_broker(data: Request):
 # region DH apis
 
 
+# from customer2
 @app.post("/DHKE_Customer2_broker")
 async def DHKE_Customer2_broker(data: Request):
+    print("Rece")
     receieved_data = await data.body()
     receieved_data = receieved_data.decode("utf-8")
     receieved_data = json.loads(receieved_data)
@@ -456,8 +462,11 @@ async def DHKE_Customer2_broker(data: Request):
         customer_2_state.dh_shared_key = Broker.calculate_shared_secret(
             public_key_C2B, customer_2_state.dh_private_key, customer_2_state.dh_prime
         )
+
+        customer_2_state.session_key = str(customer_2_state.dh_shared_key).encode()  # type: ignore
+        customer_2_state.iv = str(customer_2_state.dh_shared_key)[::-1].encode()  # type: ignore
         logger.critical(
-            f"Calculated Customer 1 DH session key is {customer_2_state.dh_shared_key}"
+            f"Calculated Customer 2 DH session key is {customer_2_state.dh_shared_key}"
         )
         print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
 
@@ -488,6 +497,9 @@ async def DHKE_Merchant_broker(data: Request):
         merchant_state.dh_shared_key = Broker.calculate_shared_secret(
             public_key_MB, merchant_state.dh_private_key, merchant_state.dh_prime
         )
+
+        merchant_state.session_key = str(merchant_state.dh_shared_key).encode()  # type: ignore
+        merchant_state.iv = str(merchant_state.dh_shared_key)[::-1].encode()  # type: ignore
         logger.critical(
             f"Calculated Merchant - Broker DH session key {merchant_state.dh_shared_key}"
         )

@@ -84,8 +84,9 @@ class BrokerState:
         self.state = None
         self.auth_done = False
         # assume DH is done
-        self.iv = b"4832500747"
-        self.session_key = b"4103583911"
+        # self.iv = b"4832500747"
+        # self.session_key = b"4103583911"
+        self.session_key, self.iv = None, None
         self.request_id = "10129120"
         (
             self.dh_private_key,
@@ -99,8 +100,9 @@ class MerchantState:
     def __init__(self) -> None:
         self.state = None
         self.auth_done = False
-        self.iv = b"6042302272"
-        self.session_key = b"7289135232"
+        # self.iv = b"6042302272"
+        # self.session_key = b"7289135232"
+        self.session_key, self.iv = None, None
         self.request_id = "129129"
         (
             self.dh_private_key,
@@ -225,6 +227,9 @@ async def DHKE_customer_1(data: Request):
             broker_state.dh_shared_key = Customer1.calculate_shared_secret(
                 public_key_BC1, broker_state.dh_private_key, broker_state.dh_prime
             )
+
+            broker_state.session_key = str(broker_state.dh_shared_key).encode()  # type: ignore
+            broker_state.iv = str(broker_state.dh_shared_key)[::-1].encode()  # type: ignore
             logger.critical(
                 f"Calculated Customer 1 - Broker DH session key {broker_state.dh_shared_key}"
             )
@@ -238,6 +243,8 @@ async def DHKE_customer_1(data: Request):
             merchant_state.dh_shared_key = Customer1.calculate_shared_secret(
                 public_key_MC1, merchant_state.dh_private_key, merchant_state.dh_prime
             )
+            merchant_state.session_key = str(merchant_state.dh_shared_key).encode()  # type: ignore
+            merchant_state.iv = str(merchant_state.dh_shared_key)[::-1].encode()  # type: ignore
             logger.critical(
                 f"Customer 1 - Merchant DH session key {merchant_state.dh_shared_key}"
             )

@@ -101,8 +101,9 @@ class BrokerState:
         self.auth_api = f"{self.host}/auth_broker"
         self.msg_api = f"{self.host}/message_merchant_broker"
         # assume DH is done
-        self.iv = b"6042302273"
-        self.session_key = b"7289135233"
+        # self.iv = b"6042302273"
+        # self.session_key = b"7289135233"
+        self.session_key, self.iv = None, None
         self.request_id = "129311"
         (
             self.dh_private_key,
@@ -119,8 +120,9 @@ class CustomerState:
         self.state = state
         self.auth_done = auth_done
         # assume DH is done
-        self.iv = b"6042302272"
-        self.session_key = b"7289135232"
+        # self.iv = b"6042302272"
+        # self.session_key = b"7289135232"
+        self.session_key, self.iv = None, None
         (
             self.dh_private_key,
             self.dh_public_key,
@@ -303,6 +305,9 @@ async def DHKE_merchant(data: Request):
         broker_state.dh_session_key = Merchant.calculate_shared_secret(
             public_key_BM, broker_state.dh_private_key, broker_state.dh_prime
         )
+
+        broker_state.iv = str(broker_state.dh_session_key)[::-1].encode()  # type: ignore
+        broker_state.session_key = str(broker_state.dh_session_key).encode()  # type: ignore
         logger.critical(
             f"Calculated Merchant - Broker DH session key {broker_state.dh_session_key}"
         )
@@ -321,6 +326,8 @@ async def DHKE_merchant(data: Request):
         customer_state.dh_session_key = Merchant.calculate_shared_secret(
             public_key_CM, customer_state.dh_private_key, customer_state.dh_prime
         )
+        customer_state.iv = str(customer_state.dh_session_key)[::-1].encode()  # type: ignore
+        customer_state.session_key = str(customer_state.dh_session_key).encode()  # type: ignore
         logger.critical(
             f"Calculated Merchant - Customer {RID} DH session key {customer_state.dh_session_key}"
         )

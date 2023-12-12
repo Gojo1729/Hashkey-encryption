@@ -63,10 +63,10 @@ customer_2_private_key = "../OLD KEYS/customer2_private_key.pem"
 BROKER_API = f"http://127.0.0.1:8002"
 BROKER_AUTH_API = f"{BROKER_API}/auth_broker"
 BROKER_MSG_API = f"{BROKER_API}/message_customer_2_broker"
-BROKER_DHKEC1_API = f"{BROKER_API}/DHKE_customer2_broker"
+BROKER_DHKEC2_API = f"{BROKER_API}/DHKE_Customer2_broker"
 # as we don't have access to the DH keys before authentication, we will use this key for generating hash
 
-customer2 = DiffieHellman()
+Customer2 = DiffieHellman()
 
 
 class CustomerInput(BaseModel):
@@ -79,14 +79,15 @@ class BrokerState:
         self.state = None
         self.auth_done = False
         # assume DH is done
-        self.iv = b"4832500747"
-        self.session_key = b"4103583911"
+        # self.iv = b"4832500747"
+        # self.session_key = b"4103583911"
+        self.session_key, self.iv = None, None
         self.request_id = "10129120"
         (
             self.dh_private_key,
             self.dh_public_key,
             self.dh_prime,
-        ) = customer2.generate_keypair(10000000019)
+        ) = Customer2.generate_keypair(10000000033)
         self.dh_shared_key = None
 
 
@@ -94,14 +95,15 @@ class MerchantState:
     def __init__(self) -> None:
         self.state = None
         self.auth_done = False
-        self.iv = b"6042302272"
-        self.session_key = b"7289135232"
+        # self.iv = b"6042302272"
+        # self.session_key = b"7289135232"
+        self.session_key, self.iv = None, None
         self.request_id = "129129"
         (
             self.dh_private_key,
             self.dh_public_key,
             self.dh_prime,
-        ) = customer2.generate_keypair(10000000061)
+        ) = Customer2.generate_keypair(10000000061)
         self.dh_shared_key = None
 
 
@@ -179,11 +181,11 @@ def message_broker(encrypted_data):
 # region DH apis
 
 
-def DHKE_customer2_broker(encrypted_data):
+def DHKE_Customer2_broker(encrypted_data):
     # use keyed hash for sending messages after encryption
     async def send_message():
         async with httpx.AsyncClient() as client:
-            response = await client.post(BROKER_DHKEC1_API, content=encrypted_data)
+            response = await client.post(BROKER_DHKEC2_API, content=encrypted_data)
 
             print("Response Status Code:", response.status_code)
             print("Response Content:", response.text)
@@ -217,9 +219,12 @@ async def DHKE_customer_2(data: Request):
             public_key_BC1 = receieved_data["DH_PUBLIC_KEY"]
             print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
             print("Diffe_hellman : public key of broker recieved")
-            broker_state.dh_shared_key = customer2.calculate_shared_secret(
+            broker_state.dh_shared_key = Customer2.calculate_shared_secret(
                 public_key_BC1, broker_state.dh_private_key, broker_state.dh_prime
             )
+
+            broker_state.session_key = str(broker_state.dh_shared_key).encode()  # type: ignore
+            broker_state.iv = str(broker_state.dh_shared_key)[::-1].encode()  # type: ignore
             logger.critical(
                 f"Calculated Customer 2 - Broker DH session key {broker_state.dh_shared_key}"
             )
@@ -230,14 +235,16 @@ async def DHKE_customer_2(data: Request):
             public_key_MC1 = receieved_data["DH_PUBLIC_KEY"]
             print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
             print("Diffe_hellman : public key of merchant recieved")
-            merchant_state.dh_shared_key = customer2.calculate_shared_secret(
+            merchant_state.dh_shared_key = Customer2.calculate_shared_secret(
                 public_key_MC1, merchant_state.dh_private_key, merchant_state.dh_prime
             )
+            merchant_state.session_key = str(merchant_state.dh_shared_key).encode()  # type: ignore
+            merchant_state.iv = str(merchant_state.dh_shared_key)[::-1].encode()  # type: ignore
             logger.critical(
                 f"Customer 2 - Merchant DH session key {merchant_state.dh_shared_key}"
             )
     else:
-        return {"message": "customer2: You are not authorized, please authorize first"}
+        return {"message": "CUSTOMER2: You are not authorized, please authorize first"}
 
 
 # end region
@@ -259,7 +266,7 @@ def Customer_Broker_DHKE():
     logger.critical(f"Payload Sent :")
     logger.critical(f"{payload}")
     print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
-    DHKE_customer2_broker(payload)
+    DHKE_Customer2_broker(payload)
 
 
 def Customer_Merchant_DHKE():
@@ -274,7 +281,7 @@ def Customer_Merchant_DHKE():
     logger.critical(f"Payload Sent :")
     logger.critical(payload)
     print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
-    DHKE_customer2_broker(payload)
+    DHKE_Customer2_broker(payload)
 
 
 # endregion
