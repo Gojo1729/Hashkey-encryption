@@ -440,12 +440,7 @@ def handle_message(customer_payload, rid):
             logger.info("Customer Authenticated!! sending info to Broker")
             logger.critical({encrypt_broker_payload})
             print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
-            if not False:
-                customers[rid] = CustomerState(rid, "state", True)
-            else:
-                return_msg = "INVALID, CUSTOMER ALREADY AUTHENTICATED"
-                print(f"{return_msg}")
-                return return_msg
+            customers[rid] = CustomerState(rid, "state", True)
             message_broker(packed_encrypted_message)
 
     elif msg_type == "VIEW_PRODUCTS":
