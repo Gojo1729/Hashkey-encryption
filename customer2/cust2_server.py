@@ -499,28 +499,33 @@ def isMerchantAuthorized():
 async def handle_input(action_number: int = Form(...)):
     print("\n\n")
     print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
-    print(f"Sending message to broker")
-
+    msg = ""
     # send auth request to broker
     if action_number == 1:
         timestamp = str(datetime.now())
         # PAYLOAD
         auth_payload_for_broker()
+        msg = "AUTH_REQUEST_BROKER"
         return {"message": "AUTH_REQUEST_BROKER"}
 
     # send auth request to merchant through broker
     elif action_number == 2:
-        if isBrokerAuthorized():
+        if merchant_state.session_key is not None and isBrokerAuthorized():
             await auth_payload_to_merchant()
             return {"message": "AUTH_REQUEST_MERCHANT"}
         else:
-            return {"message": "BROKER_NOT_AUTHORIZED to send auth request to merchant"}
+            msg = "BROKER_NOT_AUTHORIZED to send auth request to merchant or session key not shared with merchant"
+            return {
+                "message": "BROKER_NOT_AUTHORIZED to send auth request to merchant or session key not shared with merchant"
+            }
 
     # sending dh key request to merchant
     elif action_number == 3:
         if isBrokerAuthorized() and isMerchantAuthorized():
             Customer_Merchant_DHKE()
             return {"message": "Sending DH key request to merchant"}
+        else:
+            return {"message": "Broker or merchant not authorized"}
 
     # view products
     elif action_number == 4:
