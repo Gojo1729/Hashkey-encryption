@@ -131,6 +131,7 @@ class CustomerState:
         self.dh_session_key = None
         self.prods = {}
         self.payment = 0
+        self.transaction_id = None
 
 
 # Create an instance of the FastAPI class
@@ -469,6 +470,8 @@ def handle_message(customer_payload, rid):
 
     elif msg_type == "BUY_PRODUCTS":
         Products = customer_payload["PRODUCTS"]
+        TID = customer_payload["TRANSACTION_ID"]
+        SENT_TIMESTAMP = customer_payload["TIMESTAMP"]
         cust: CustomerState = customers.get(rid)  # type: ignore
         prods = cust.prods = {}
         cust.payment = 0
@@ -499,6 +502,7 @@ def handle_message(customer_payload, rid):
                 "TIMESTAMP": str(datetime.now()),
                 "MESSAGE": p,
                 "PRODUCTS": prods,
+                "TRANSACTION_ID": TID,
             }
             broker_payload = {
                 "TYPE": "TO_CUSTOMER",
@@ -509,6 +513,7 @@ def handle_message(customer_payload, rid):
             }
             cust.prods = {}
             cust = customers.get(rid)  # type: ignore
+            cust.transaction_id = TID
             if cust is None:
                 print("MERCHANT: PLEASE AUTH BEFORE YOU VIEW PRODUCTS")
             else:
@@ -521,6 +526,7 @@ def handle_message(customer_payload, rid):
             customer_payload = {
                 "TIMESTAMP": str(datetime.now()),
                 "PRODUCTS": prods,
+                "TRANSACTION_ID": TID,
             }
             broker_payload = {
                 "TYPE": "PURCHASE_CONSENT",
@@ -531,6 +537,7 @@ def handle_message(customer_payload, rid):
                 "PAYLOAD": "",
             }
             cust = customers.get(rid)  # type: ignore
+            cust.transaction_id = TID
             if cust is None:
                 print("MERCHANT: PLEASE AUTH BEFORE YOU VIEW PRODUCTS")
             else:
@@ -565,6 +572,7 @@ def handle_message(customer_payload, rid):
             "TIMESTAMP": str(datetime.now()),
             "PRODUCTS": PRODUCTS,
             "RANDOM_BYTES": (random.randint(0, 1000) * b"x").decode(ENCODING_TYPE),
+            "TRANSACTION_ID": cust.transaction_id,
         }
         # handle rid
         cust = customers.get(rid)  # type: ignore

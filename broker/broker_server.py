@@ -94,7 +94,7 @@ class Customer1State:
         self.public_key = "../OLD KEYS/customer1_public_key.pem"
         self.request_id = "10129120"
         self.entity = "Customer"
-        self.Money = "2000"
+        self.money = 2000
         self.DHKE_api = f"{self.host}/DHKE_customer_1"
         (
             self.dh_private_key,
@@ -124,7 +124,7 @@ class Customer2State:
         self.session_key, self.iv = None, None
         self.public_key = "../OLD KEYS/customer2_public_key.pem"
         self.request_id = "10129121"
-        self.Money = "2000"
+        self.money = 2000
         self.entity = "Customer"
         (
             self.dh_private_key,
@@ -147,7 +147,7 @@ class MerchantState:
         self.public_key = "../OLD KEYS/merchant_public_key.pem"
         self.request_id = "10129122"
         self.entity = "Merchant"
-        self.Money = "20000"
+        self.money = 20000
         self.DHKE_api = f"{self.host}/DHKE_merchant"
         (
             self.dh_private_key,
@@ -745,8 +745,14 @@ async def message_customer_1_broker(data: Request):
         customer_msg_decrypted["TYPE"] = "FROM_CUSTOMER"
         customer_to_merchant(customer_msg_decrypted)
     elif "PAYMENT_CONSENT" == msg_type:
-        if customer_msg_decrypted["AMOUNT"] <= int(customer_1_state.Money):
+        if customer_msg_decrypted["AMOUNT"] <= int(customer_1_state.money):
             # get the payload, append his message to customer and send it
+            customer_1_state.money = customer_1_state.money - int(
+                customer_msg_decrypted["AMOUNT"]
+            )
+            merchant_state.money = merchant_state.money + int(
+                customer_msg_decrypted["AMOUNT"]
+            )
             broker_to_merchant(customer_msg_decrypted)
         else:
             return "**********Insufficient Funds! Payment Aborted**********"
@@ -812,8 +818,14 @@ async def message_customer_2_broker(data: Request):
         customer_msg_decrypted["TYPE"] = "FROM_CUSTOMER"
         customer_to_merchant(customer_msg_decrypted)
     elif "PAYMENT_CONSENT" == msg_type:
-        if customer_msg_decrypted["AMOUNT"] <= int(customer_2_state.Money):
+        if customer_msg_decrypted["AMOUNT"] <= int(customer_2_state.money):
             # get the payload, append his message to customer and send it
+            customer_2_state.money = customer_2_state.money - int(
+                customer_msg_decrypted["AMOUNT"]
+            )
+            merchant_state.money = merchant_state.money + int(
+                customer_msg_decrypted["AMOUNT"]
+            )
             broker_to_merchant(customer_msg_decrypted)
         else:
             return "**********Insufficient Funds! Payment Aborted**********"

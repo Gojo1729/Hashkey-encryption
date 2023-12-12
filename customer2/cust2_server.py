@@ -14,6 +14,8 @@ import pandas as pd
 from DH import DiffieHellman
 from typing import Tuple, Dict
 import logging
+from enum import Enum
+import uuid
 
 
 class CustomFormatter(logging.Formatter):
@@ -69,6 +71,23 @@ BROKER_DHKEC2_API = f"{BROKER_API}/DHKE_Customer2_broker"
 Customer2 = DiffieHellman()
 
 
+class TransactionState(Enum):
+    BUY_REQUEST_SENT = 1
+    PAYMENT_CONSENT_RECEIVED = 2
+    PAYMENT_SEND = 3
+    PRODUCT_RECEIVED = 4
+
+
+class Transaction:
+    def __init__(self, timestamp):
+        self.id = str(uuid.uuid4())
+        self.timestamp = timestamp
+        self.state = TransactionState.BUY_REQUEST_SENT
+
+    def __str__(self) -> str:
+        return f"{self.id=}, {self.timestamp=}, {self.state=}"
+
+
 class CustomerInput(BaseModel):
     action_number: int
     enc_data: bytes
@@ -120,6 +139,7 @@ app = FastAPI()
 broker_state = BrokerState()
 merchant_state = MerchantState()
 templates = Jinja2Templates(directory="templates")
+transactions: Dict[str, Transaction] = {}
 
 
 def unpack_message(json_message: dict) -> Tuple[bytes, bytes]:
@@ -352,12 +372,14 @@ def send_message(action):
             Items[j] = input("Enter the Number of items you want to purchase")
 
         print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
-
+        sent_timestamp = str(datetime.now())
+        new_transaction = Transaction(sent_timestamp)
+        transactions[new_transaction.id] = new_transaction
         merchant_payload = {
             "TYPE": action,
             "PRODUCTS": Items,
-            "TIMESTAMP": str(datetime.now()),
-            "HASH": "",
+            "TIMESTAMP": new_transaction.timestamp,
+            "TRANSACTION_ID": new_transaction.id,
         }
         broker_payload = {
             "USERID": global_userid,
@@ -625,6 +647,19 @@ async def message_customer_2(data: Request):
         is_hash_validated = enc_dec.validate_hash(
             merchant_msg_decrypted, message_hash, merchant_state
         )
+        tid = merchant_msg_decrypted.get("TRANSACTION_ID")
+        if tid is not None:
+            transaction = transactions.get(tid)
+            if transaction is not None:
+                logger.info(
+                    f"Received products for transaction {tid}, Transaction = {transaction}"
+                )
+                transaction.state = TransactionState.PRODUCT_RECEIVED
+            else:
+                logger.error(
+                    f"Transaction with id {tid} not found, aborting the transaction"
+                )
+                return
         try:
             print(merchant_msg_decrypted["MESSAGE"])
         except KeyError as ke:
@@ -643,10 +678,24 @@ async def message_customer_2(data: Request):
         merchant_msg_decrypted = enc_dec.decrypt_data(encrypted_message, merchant_state)
         logger.info(pd.DataFrame(merchant_msg_decrypted["PRODUCTS"]))
         print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
-        c = input(
-            "Merchant Requested Payment Request of amount ${} for the purchase of the items shown above  Yes/No".format(
-                broker_msg_decrypted["AMOUNT"]
+        tid = merchant_msg_decrypted.get("TRANSACTION_ID")
+        if tid is not None:
+            transaction = transactions.get(tid)
+            if transaction is not None:
+                logger.info(
+                    f"Received purchase consent for transaction {tid}, Transaction = {transaction}"
+                )
+                if transaction.state != TransactionState.PAYMENT_CONSENT_RECEIVED:
+                    transaction.state = TransactionState.PAYMENT_CONSENT_RECEIVED
+                else:
+                    logger.error(f"Money already sent for the transaction {tid}")
+        else:
+            logger.error(
+                f"Transaction with id {tid} not found, aborting the transaction"
             )
+            return
+        c = input(
+            f"Merchant Requested Payment Request of amount { broker_msg_decrypted['AMOUNT']} for the purchase of the items shown above  Yes/No"
         )
         print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
         is_hash_validated = enc_dec.validate_hash(
