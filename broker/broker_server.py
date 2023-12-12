@@ -119,8 +119,9 @@ class Customer2State:
         self.auth_done = False
         self.random_id = "1001991"
         # assume DH is done
-        self.iv = b"4832500747"
-        self.session_key = b"4103583911"
+        # self.iv = b"4832500747"
+        # self.session_key = b"4103583911"
+        self.session_key, self.iv = None, None
         self.public_key = "../OLD KEYS/customer2_public_key.pem"
         self.request_id = "10129121"
         self.Money = "2000"
@@ -780,7 +781,7 @@ def broker_to_merchant(customer_decrypted_message):
     send_message(merchant_state, packed_encrypted_message, KEYED_MSG)
 
 
-# receiving msg from customer1
+# receiving msg from customer2
 @app.post("/message_customer_2_broker")
 async def message_customer_2_broker(data: Request):
     # use keyed hash
