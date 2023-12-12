@@ -495,7 +495,7 @@ def handle_message(customer_payload, rid):
                             "Name": k["name"],
                             "Quantity": Products[customer_product],
                         }
-                        Not_Available[k["pID"]] = k["quantity"]
+                        Not_Available[k["prod_id"]] = k["quantity"]
         if Not_Available != {}:
             p = "All Items are not available, You requested for following number of items"
             customer_payload = {
