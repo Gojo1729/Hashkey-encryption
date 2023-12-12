@@ -555,6 +555,7 @@ def handle_message(customer_payload, rid):
                 "PID": customer_product["PID"],
                 "Name": customer_product["Name"],
                 "State": "Purchased",
+                "Quantity": customer_product["Quantity"],
             }
             mystate.inventory[customer_product["PID"]]["quantity"] = mystate.inventory[
                 customer_product["PID"]
