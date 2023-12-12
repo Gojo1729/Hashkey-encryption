@@ -573,6 +573,9 @@ async def auth_broker(data: Request):
     Decrypted_MESS = rsa_decrypt_data(encrypted_message, broker_private_key)
     is_hash_validated = enc_dec.validate_rsa_hash(Decrypted_MESS, message_hash)
     logger.info({is_hash_validated})
+    if not is_hash_validated:
+        print(f"Error in hash validation, aborting")
+        return
     print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
 
     Decrypted_MESS = json.loads(Decrypted_MESS)
@@ -640,6 +643,9 @@ async def message_merchant_broker(data: Request):
     msg_hash = enc_dec.validate_hash(
         merchant_msg_decrypted, message_hash, merchant_state
     )
+    if not msg_hash:
+        print(f"Error in hash validation, aborting")
+        return
     logger.error(f"Merchant Payload Hash is ---{message_hash}")
     logger.info(f"Hash of message from merchant validated {msg_hash}")
     print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
@@ -724,6 +730,9 @@ async def message_customer_1_broker(data: Request):
     msg_hash = enc_dec.validate_hash(
         customer_msg_decrypted, message_hash, customer_1_state
     )
+    if not msg_hash:
+        print(f"Error in hash validation, aborting")
+        return
     logger.info(f"Hash of message from customer 1 validated {msg_hash}")
     print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
     msg_type = customer_msg_decrypted["TYPE"]
@@ -799,6 +808,9 @@ async def message_customer_2_broker(data: Request):
     msg_hash = enc_dec.validate_hash(
         customer_msg_decrypted, message_hash, customer_2_state
     )
+    if not msg_hash:
+        print(f"Error in hash validation, aborting")
+        return
     print(f"Hash of message from customer validated {msg_hash}")
     msg_type = customer_msg_decrypted["TYPE"]
 

@@ -537,19 +537,27 @@ async def handle_input(action_number: int = Form(...)):
 
     # send auth request to merchant through broker
     elif action_number == 2:
-        if isBrokerAuthorized():
+        if isBrokerAuthorized() and (broker_state.session_key is not None):
             await auth_payload_to_merchant()
             return {"message": "AUTH_REQUEST_MERCHANT"}
         else:
-            return {"message": "BROKER_NOT_AUTHORIZED to send auth request to merchant"}
+            return {
+                "message": "BROKER_NOT_AUTHORIZED/Broker session key not available to send auth request to merchant"
+            }
 
     # sending dh key request to merchant
     elif action_number == 3:
-        if isBrokerAuthorized() and isMerchantAuthorized():
+        if (
+            isBrokerAuthorized()
+            and (broker_state.session_key is not None)
+            and isMerchantAuthorized()
+        ):
             Customer_Merchant_DHKE()
             return {"message": "Sending DH key request to merchant"}
         else:
-            return {"message": "Broker/Merchant not authorized"}
+            return {
+                "message": "Broker or merchant not authorized or broker session key not exchanged"
+            }
 
     # view products
     elif action_number == 4:
@@ -591,8 +599,10 @@ async def auth_customer_1(data: Request):
 
     Decrypted_MESS = rsa_decrypt_data(encrypted_message, customer_1_private_key)
     is_hash_validated = enc_dec.validate_rsa_hash(Decrypted_MESS, message_hash)
-    logger.warning(f"hash validated for broker ? ")
-    logger.info({is_hash_validated})
+    logger.warning(f"hash validated for broker {is_hash_validated}? ")
+    if not is_hash_validated:
+        print(f"Error in hash validation, aborting")
+        return
     print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
 
     Decrypted_MESS = json.loads(Decrypted_MESS)
@@ -625,6 +635,9 @@ async def message_customer_1(data: Request):
         broker_msg_decrypted, message_hash, broker_state
     )
     logger.info(f"Hash of message from broker validated {is_hash_validated}")
+    if not is_hash_validated:
+        print(f"Error in hash validation, aborting")
+        return
 
     if "MERCHANT_AUTHENTICATION" == broker_msg_decrypted["TYPE"]:
         print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
@@ -653,6 +666,9 @@ async def message_customer_1(data: Request):
         is_hash_validated = enc_dec.validate_hash(
             merchant_msg_decrypted, message_hash, merchant_state
         )
+        if not is_hash_validated:
+            print(f"Error in hash validation, aborting")
+            return
         tid = merchant_msg_decrypted.get("TRANSACTION_ID")
         if tid is not None:
             transaction = transactions.get(tid)
@@ -667,7 +683,7 @@ async def message_customer_1(data: Request):
                 )
                 return
         try:
-            print(merchant_msg_decrypted["MESSAGE"])
+            logger.critical(merchant_msg_decrypted["MESSAGE"])
         except KeyError as ke:
             pass
         p = pd.DataFrame(merchant_msg_decrypted["PRODUCTS"].values())
@@ -712,6 +728,9 @@ async def message_customer_1(data: Request):
         logger.info(f"Merchant data decrypted {merchant_msg_decrypted['PRODUCTS']}")
         logger.error(f"merchant hash validated -> {is_hash_validated}")
         print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
+        if not is_hash_validated:
+            print(f"Error in hash validation, aborting")
+            return
         if c == "Yes":
             send_message("PAYMENT" + str(broker_msg_decrypted["AMOUNT"]))
         else:

@@ -602,6 +602,9 @@ def take_action_for_customer(payload, rid, enc_type):
         is_hash_validated = enc_dec.validate_rsa_hash(
             decypted_customer_msg, message_hash
         )
+        if not is_hash_validated:
+            print(f"Error in hash validation, aborting")
+            return
         logger.info(
             f"Customer data decrypted {decrypted_customer_msg_json}, {rid=}, {is_hash_validated=}"
         )
@@ -618,6 +621,9 @@ def take_action_for_customer(payload, rid, enc_type):
             is_customer_hash_valid = enc_dec.validate_hash(
                 decrypted_customer_msg_json, message_hash, customer_state
             )
+            if not is_customer_hash_valid:
+                print(f"Error in hash validation, aborting")
+                return
             logger.info(f"Customer data decrypted {decrypted_customer_msg_json}")
             logger.error(f"customer hash validated -> {is_customer_hash_valid}")
             print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
@@ -637,6 +643,9 @@ async def message_merchant(data: Request):
     msg_hash = enc_dec.validate_hash(broker_msg_decrypted, message_hash, broker_state)
     logger.error(f"Merchant Payload Hash is ---{message_hash}")
     logger.info(f"Hash of message from broker validated {msg_hash} \n{stars}")
+    if not msg_hash:
+        print(f"Error in hash validation, aborting")
+        return
     print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
     msg_type = broker_msg_decrypted["TYPE"]
     cust_id = broker_msg_decrypted["USERID"]
@@ -665,6 +674,9 @@ async def auth_merchant(data: Request):
     logger.debug(f"---- message hash {message_hash}")
     Decrypted_MESS = rsa_decrypt_data(encrypted_message, merchant_private_key)
     is_hash_validated = enc_dec.validate_rsa_hash(Decrypted_MESS, message_hash)
+    if not is_hash_validated:
+        print(f"Error in hash validation, aborting")
+        return
     logger.info(f"Hash validated for customer ? ")
     logger.info({is_hash_validated})
     print("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
