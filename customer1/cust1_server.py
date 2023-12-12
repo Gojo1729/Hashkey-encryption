@@ -514,13 +514,11 @@ async def handle_input(action_number: int = Form(...)):
 
     # send auth request to merchant through broker
     elif action_number == 2:
-        if merchant_state.session_key is not None and isBrokerAuthorized():
+        if isBrokerAuthorized():
             await auth_payload_to_merchant()
             return {"message": "AUTH_REQUEST_MERCHANT"}
         else:
-            return {
-                "message": "BROKER_NOT_AUTHORIZED to send auth request to merchant or Session keys are not sent to merchant"
-            }
+            return {"message": "BROKER_NOT_AUTHORIZED to send auth request to merchant"}
 
     # sending dh key request to merchant
     elif action_number == 3:
@@ -532,7 +530,11 @@ async def handle_input(action_number: int = Form(...)):
 
     # view products
     elif action_number == 4:
-        if isBrokerAuthorized() and isMerchantAuthorized():
+        if (
+            isBrokerAuthorized()
+            and isMerchantAuthorized()
+            and (merchant_state.session_key is not None)
+        ):
             print(f"sending view prod request to merchant through broker")
             send_message("VIEW_PRODUCTS")
             return {"message": "MESSAGE_MERCHANT"}
@@ -541,7 +543,11 @@ async def handle_input(action_number: int = Form(...)):
 
     # buy product from merchant
     elif action_number == 5:
-        if isBrokerAuthorized() and isMerchantAuthorized():
+        if (
+            isBrokerAuthorized()
+            and isMerchantAuthorized()
+            and (merchant_state.session_key is not None)
+        ):
             print(f"sending Buy Products Request to Merchant through broker")
             send_message("BUY_PRODUCTS")
             return {"message": "MESSAGE_MERCHANT"}
